@@ -36,12 +36,14 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Apply fidelity round
+      - name: Apply fidelity and polish rounds
         run: |
           python3 tool/apply_bujo_fidelity_core.py
           python3 tool/apply_bujo_fidelity_ui.py
           python3 tool/apply_bujo_fidelity_tests.py
           python3 tool/apply_bujo_fidelity_integration.py
+          cat tool/polish_round.b64.* | tr -d '\n' | base64 -d > /tmp/apply_polish_round.py
+          python3 /tmp/apply_polish_round.py
 
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
@@ -70,10 +72,10 @@ jobs:
       - name: Validate user Wiki
         run: python3 tool/validate_wiki.py
 
-      - name: Commit fidelity round
+      - name: Commit polish round
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs lib test
-          git commit -m 'feat(journal): close Bullet Journal fidelity gaps'
+          git commit -m 'feat(ux): polish deliberate journal interactions'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
