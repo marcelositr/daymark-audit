@@ -253,10 +253,6 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
   }
 
   void _backToToday() {
-    if (context.canPop()) {
-      context.pop();
-      return;
-    }
     context.go('/');
   }
 
