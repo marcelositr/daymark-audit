@@ -74,6 +74,66 @@ final class JournalRepository {
     });
   }
 
+  Future<void> undoCollectionCreation({required String collectionId}) {
+    return _database.transaction(() async {
+      final collection = await _database
+          .customSelect(
+            '''
+            SELECT created_at, updated_at
+            FROM collections
+            WHERE id = ?
+            ''',
+            variables: <Variable<Object>>[Variable.withString(collectionId)],
+          )
+          .getSingleOrNull();
+      if (collection == null) {
+        throw JournalNotFoundException('Collection', collectionId);
+      }
+
+      if (collection.read<int>('created_at') !=
+          collection.read<int>('updated_at')) {
+        throw const JournalInvariantException(
+          'Only an untouched Collection can be undone.',
+        );
+      }
+
+      final relations = await _database
+          .customSelect(
+            '''
+            SELECT
+              EXISTS(
+                SELECT 1 FROM entry_placements WHERE collection_id = ?
+              ) AS has_entries,
+              EXISTS(
+                SELECT 1 FROM collection_references WHERE collection_id = ?
+              ) AS has_references,
+              EXISTS(
+                SELECT 1 FROM index_items WHERE collection_id = ?
+              ) AS is_indexed
+            ''',
+            variables: <Variable<Object>>[
+              Variable.withString(collectionId),
+              Variable.withString(collectionId),
+              Variable.withString(collectionId),
+            ],
+          )
+          .getSingle();
+
+      if (relations.read<int>('has_entries') != 0 ||
+          relations.read<int>('has_references') != 0 ||
+          relations.read<int>('is_indexed') != 0) {
+        throw const JournalInvariantException(
+          'A Collection with journal relationships cannot be undone.',
+        );
+      }
+
+      await _database.customStatement(
+        'DELETE FROM collections WHERE id = ?',
+        <Object>[collectionId],
+      );
+    });
+  }
+
   Future<String> createEntry({
     required JournalEntryType type,
     required String content,

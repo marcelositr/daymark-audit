@@ -22,6 +22,10 @@ final class JournalService {
     return _repository.createCollection(title: title);
   }
 
+  Future<void> undoCollectionCreation({required String collectionId}) {
+    return _repository.undoCollectionCreation(collectionId: collectionId);
+  }
+
   Future<String> capture({
     required JournalEntryType type,
     required String content,

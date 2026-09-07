@@ -5,6 +5,7 @@ import 'package:daymark/core/session/journal_session.dart';
 import 'package:daymark/core/session/journal_session_controller.dart';
 import 'package:daymark/features/journal/data/search_repository.dart';
 import 'package:daymark/features/journal/domain/journal_domain.dart';
+import 'package:daymark/features/journal/presentation/entry_signifiers.dart';
 import 'package:daymark/features/journal/presentation/source_navigation.dart';
 import 'package:daymark/l10n/app_localizations.dart';
 import 'package:daymark/presentation/app_section_scope.dart';
@@ -17,7 +18,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 abstract interface class SearchJournalDataSource {
-  Future<List<JournalSearchResult>> search(String query);
+  Future<List<JournalSearchResult>> search(
+    String query, {
+    Set<JournalSignifier> signifiers = const <JournalSignifier>{},
+  });
 }
 
 final Provider<SearchJournalDataSource> searchJournalDataSourceProvider =
@@ -37,8 +41,11 @@ final class _SessionSearchJournalDataSource implements SearchJournalDataSource {
   final JournalSession _session;
 
   @override
-  Future<List<JournalSearchResult>> search(String query) {
-    return _session.searchJournal(query);
+  Future<List<JournalSearchResult>> search(
+    String query, {
+    Set<JournalSignifier> signifiers = const <JournalSignifier>{},
+  }) {
+    return _session.searchJournal(query, signifiers: signifiers);
   }
 }
 
@@ -60,6 +67,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   bool _wasSearchSectionActive = false;
   int _searchRequestId = 0;
   String? _lastSubmittedQuery;
+  Set<JournalSignifier> _lastSubmittedSignifiers = const <JournalSignifier>{};
+  final Set<JournalSignifier> _selectedSignifiers = <JournalSignifier>{};
 
   @override
   void didChangeDependencies() {
@@ -79,7 +88,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         !_searching) {
       final String? query = _lastSubmittedQuery;
       if (query != null) {
-        unawaited(_executeSearch(query, showProgress: false));
+        unawaited(
+          _executeSearch(query, _lastSubmittedSignifiers, showProgress: false),
+        );
       }
       _restoreSearchFocus();
     }
@@ -133,6 +144,28 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildSignifierFilter(
+                signifier: JournalSignifier.priority,
+                symbol: '*',
+                label: l10n.signifierPriority,
+              ),
+              _buildSignifierFilter(
+                signifier: JournalSignifier.inspiration,
+                symbol: '!',
+                label: l10n.signifierInspiration,
+              ),
+              _buildSignifierFilter(
+                signifier: JournalSignifier.explore,
+                symbol: '◉',
+                label: l10n.signifierExplore,
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           Expanded(child: _buildResults(context, l10n)),
           const DaymarkNoticeRegion(),
@@ -168,11 +201,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           onTap: () => context.go(sourceLocationForSearchResult(result)),
           contentPadding: EdgeInsets.zero,
           leading: SizedBox(
-            width: 24,
-            child: Text(
-              _entrySymbol(result),
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
+            width: signifierColumnWidth + 28,
+            child: Row(
+              children: [
+                SignifierMarks(signifiers: result.signifiers),
+                SizedBox(
+                  width: 28,
+                  child: Text(
+                    _entrySymbol(result),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ],
             ),
           ),
           title: Text(
@@ -184,6 +225,29 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           subtitle: Text(_contextLabel(result, l10n)),
         );
       },
+    );
+  }
+
+  Widget _buildSignifierFilter({
+    required JournalSignifier signifier,
+    required String symbol,
+    required String label,
+  }) {
+    return FilterChip(
+      selected: _selectedSignifiers.contains(signifier),
+      onSelected: _searching
+          ? null
+          : (_) {
+              setState(() {
+                if (_selectedSignifiers.contains(signifier)) {
+                  _selectedSignifiers.remove(signifier);
+                } else {
+                  _selectedSignifiers.add(signifier);
+                }
+              });
+              unawaited(_runSearch());
+            },
+      label: Text('$symbol $label'),
     );
   }
 
@@ -199,8 +263,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Future<void> _runSearch() async {
-    final String query = _controller.text.trim();
-    if (query.isEmpty) {
+    final String rawQuery = _controller.text.trim();
+    final Set<JournalSignifier>? symbolQuery = _parseSignifierSymbolQuery(
+      rawQuery,
+    );
+    final String query = symbolQuery == null ? rawQuery : '';
+    final Set<JournalSignifier> signifiers = <JournalSignifier>{
+      ..._selectedSignifiers,
+      ...?symbolQuery,
+    };
+    if (query.isEmpty && signifiers.isEmpty) {
       _searchRequestId++;
       if (mounted) {
         setState(() {
@@ -208,17 +280,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           _hasSearched = false;
           _failed = false;
           _lastSubmittedQuery = null;
+          _lastSubmittedSignifiers = const <JournalSignifier>{};
         });
       }
       return;
     }
 
     _lastSubmittedQuery = query;
-    await _executeSearch(query, showProgress: true);
+    _lastSubmittedSignifiers = Set<JournalSignifier>.unmodifiable(signifiers);
+    await _executeSearch(query, signifiers, showProgress: true);
   }
 
   Future<void> _executeSearch(
-    String query, {
+    String query,
+    Set<JournalSignifier> signifiers, {
     required bool showProgress,
   }) async {
     final int requestId = ++_searchRequestId;
@@ -232,6 +307,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     try {
       final List<JournalSearchResult> results = await _dataSource().search(
         query,
+        signifiers: signifiers,
       );
       if (mounted && requestId == _searchRequestId) {
         setState(() {
@@ -317,3 +393,29 @@ String _entrySymbol(JournalSearchResult result) => switch (result.type) {
   JournalEntryType.event => '○',
   JournalEntryType.note => '–',
 };
+
+Set<JournalSignifier>? _parseSignifierSymbolQuery(String rawQuery) {
+  final String compact = rawQuery.replaceAll(RegExp(r'\s+'), '');
+  if (compact.isEmpty) {
+    return null;
+  }
+
+  final Set<JournalSignifier> result = <JournalSignifier>{};
+  for (final String symbol in compact.split('')) {
+    switch (symbol) {
+      case '*':
+        result.add(JournalSignifier.priority);
+        continue;
+      case '!':
+        result.add(JournalSignifier.inspiration);
+        continue;
+      case '◉':
+      case '⊙':
+        result.add(JournalSignifier.explore);
+        continue;
+      default:
+        return null;
+    }
+  }
+  return result;
+}

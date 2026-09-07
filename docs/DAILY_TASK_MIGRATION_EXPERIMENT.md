@@ -146,3 +146,24 @@ The source Future Event remains historical. The destination is a fresh Monthly C
 ## Signifiers
 
 Daymark exposes the three built-in optional Bullet Journal Signifiers already represented by the encrypted schema: `*` Priority, `!` Inspiration, and `◉` Explore. Signifiers remain optional context, never Entry types or Task states. Migration copies them to the fresh destination Entry while preserving them on the historical source. No custom Signifier UI is introduced.
+
+## Final interaction polish
+
+The experiment also validates a restrained digital interaction layer without
+changing the Bullet Journal decision model:
+
+- Collections are listed newest-first so recently-created structures remain
+  immediately reachable while their internal entries keep chronological order.
+- a just-created empty Collection can be undone for the same short window as an
+  entry capture; the undo fails closed once the Collection has content,
+  references, or Index membership;
+- Signifiers keep a fixed visual column for zero through three marks, so the
+  canonical Bullet column never shifts;
+- Search can filter by Signifiers and accepts symbol-only shortcuts while
+  leaving Signifiers optional visual metadata;
+- password fields remain hidden by default but expose an explicit temporary
+  visibility toggle in creation, unlock, restore, backup, and export flows;
+- the compact More menu groups method navigation, data operations, and app
+  settings in that order;
+- visible action labels are shortened when the surrounding screen already
+  supplies the noun, while tooltips and safety/error copy remain explicit.

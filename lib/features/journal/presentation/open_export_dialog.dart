@@ -47,6 +47,7 @@ final class _OpenExportDialogState extends ConsumerState<OpenExportDialog> {
 
   OpenExportFormat _format = OpenExportFormat.markdown;
   _OpenExportAction? _busyAction;
+  bool _passwordVisible = false;
   String? _errorMessage;
 
   bool get _busy => _busyAction != null;
@@ -75,7 +76,7 @@ final class _OpenExportDialogState extends ConsumerState<OpenExportDialog> {
               controller: _passwordController,
               enabled: !_busy,
               autofocus: true,
-              obscureText: true,
+              obscureText: !_passwordVisible,
               autocorrect: false,
               enableSuggestions: false,
               autofillHints: const <String>[AutofillHints.password],
@@ -83,7 +84,24 @@ final class _OpenExportDialogState extends ConsumerState<OpenExportDialog> {
               onSubmitted: _busy
                   ? null
                   : (_) => _perform(_OpenExportAction.save),
-              decoration: InputDecoration(labelText: l10n.masterPassword),
+              decoration: InputDecoration(
+                labelText: l10n.masterPassword,
+                suffixIcon: IconButton(
+                  onPressed: _busy
+                      ? null
+                      : () {
+                          setState(() => _passwordVisible = !_passwordVisible);
+                        },
+                  tooltip: _passwordVisible
+                      ? l10n.hidePassword
+                      : l10n.showPassword,
+                  icon: Icon(
+                    _passwordVisible
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             SegmentedButton<OpenExportFormat>(

@@ -53,6 +53,38 @@ final class _SessionEntrySignifierDataSource
   }
 }
 
+const double signifierColumnWidth = 44;
+
+class SignifierMarks extends StatelessWidget {
+  const SignifierMarks({required this.signifiers, super.key});
+
+  final Set<JournalSignifier> signifiers;
+
+  @override
+  Widget build(BuildContext context) {
+    final String marks = _marks(signifiers);
+    return SizedBox(
+      width: signifierColumnWidth,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(end: 6),
+        child: Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: marks.isEmpty
+              ? const SizedBox.shrink()
+              : ExcludeSemantics(
+                  child: Text(
+                    marks,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 class EntrySignifierMarks extends ConsumerWidget {
   const EntrySignifierMarks({required this.entryId, super.key});
 
@@ -63,18 +95,10 @@ class EntrySignifierMarks extends ConsumerWidget {
     final AsyncValue<Set<JournalSignifier>> value = ref.watch(
       entrySignifiersProvider(entryId),
     );
-    return value.maybeWhen(
-      data: (signifiers) {
-        final String marks = _marks(signifiers);
-        if (marks.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return Padding(
-          padding: const EdgeInsetsDirectional.only(end: 6),
-          child: Text(marks, style: Theme.of(context).textTheme.labelMedium),
-        );
-      },
-      orElse: () => const SizedBox.shrink(),
+    return SignifierMarks(
+      signifiers:
+          value.maybeWhen(data: (value) => value, orElse: () => null) ??
+          const <JournalSignifier>{},
     );
   }
 }

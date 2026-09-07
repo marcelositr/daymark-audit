@@ -142,6 +142,9 @@ final class _CollectionsDataSource implements CollectionsJournalDataSource {
   Future<String> create({required String title}) async => 'project';
 
   @override
+  Future<void> undoCreate(String collectionId) async {}
+
+  @override
   Future<CollectionSnapshot> load(String collectionId) async =>
       CollectionSnapshot(
         id: 'project',

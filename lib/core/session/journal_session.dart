@@ -175,6 +175,10 @@ final class JournalSession {
     return run(() => collections.create(title: title));
   }
 
+  Future<void> undoCollectionCreation({required String collectionId}) {
+    return run(() => collections.undoCreate(collectionId));
+  }
+
   Future<CollectionSnapshot> loadCollection(String collectionId) {
     return run(() => collections.load(collectionId));
   }

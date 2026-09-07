@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
 
 abstract interface class DailyHistoryDataSource {
   Future<DailyLogSnapshot?> find(String methodDate);
@@ -146,6 +147,7 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              EntrySignifierMarks(entryId: entry.id),
               SizedBox(
                 width: 28,
                 child: Text(

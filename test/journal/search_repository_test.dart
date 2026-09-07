@@ -133,6 +133,57 @@ void main() {
     expect(await search.search('radio'), isEmpty);
   });
 
+  test('filters by one or more Signifiers without requiring text', () async {
+    final String dailyId = await service.createLog(
+      kind: JournalLogKind.daily,
+      periodStart: '2026-09-03',
+    );
+    final String priorityOnly = await service.capture(
+      type: JournalEntryType.task,
+      content: 'Priority only',
+      owner: JournalLogOwner(logId: dailyId),
+    );
+    final String both = await service.capture(
+      type: JournalEntryType.note,
+      content: 'Priority and inspiration',
+      owner: JournalLogOwner(logId: dailyId),
+    );
+    await service.replaceEntrySignifiers(
+      entryId: priorityOnly,
+      signifiers: const <JournalSignifier>{JournalSignifier.priority},
+    );
+    await service.replaceEntrySignifiers(
+      entryId: both,
+      signifiers: const <JournalSignifier>{
+        JournalSignifier.priority,
+        JournalSignifier.inspiration,
+      },
+    );
+
+    final List<JournalSearchResult> priority = await search.search(
+      '',
+      signifiers: const <JournalSignifier>{JournalSignifier.priority},
+    );
+    final List<JournalSearchResult> bothFilters = await search.search(
+      '',
+      signifiers: const <JournalSignifier>{
+        JournalSignifier.priority,
+        JournalSignifier.inspiration,
+      },
+    );
+
+    expect(priority, hasLength(2));
+    expect(bothFilters, hasLength(1));
+    expect(bothFilters.single.entryId, both);
+    expect(
+      bothFilters.single.signifiers,
+      containsAll(<JournalSignifier>[
+        JournalSignifier.priority,
+        JournalSignifier.inspiration,
+      ]),
+    );
+  });
+
   test(
     'treats query punctuation literally and ignores blank queries',
     () async {

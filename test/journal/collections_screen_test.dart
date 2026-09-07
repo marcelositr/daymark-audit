@@ -60,7 +60,7 @@ void main() {
     expect(find.text('–'), findsOneWidget);
     await tester.tap(find.text('Linked note'));
     await tester.pumpAndSettle();
-    expect(find.text('Remove reference'), findsOneWidget);
+    expect(find.text('Remove'), findsOneWidget);
   });
 
   testWidgets('Collection open Task can complete or discard', (tester) async {
@@ -143,7 +143,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Reference actions'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Remove reference'));
+    await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
 
     expect(find.text('Removable link'), findsNothing);
@@ -204,6 +204,13 @@ final class _MemoryCollectionsJournal implements CollectionsJournalDataSource {
     _entries[id] = <CollectionEntry>[];
     _references[id] = <CollectionReferenceEntry>[];
     return id;
+  }
+
+  @override
+  Future<void> undoCreate(String collectionId) async {
+    _collections.removeWhere((item) => item.id == collectionId);
+    _entries.remove(collectionId);
+    _references.remove(collectionId);
   }
 
   @override

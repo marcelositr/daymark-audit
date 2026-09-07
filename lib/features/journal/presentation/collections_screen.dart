@@ -26,6 +26,8 @@ abstract interface class CollectionsJournalDataSource {
 
   Future<String> create({required String title});
 
+  Future<void> undoCreate(String collectionId);
+
   Future<CollectionSnapshot> load(String collectionId);
 
   Future<void> capture({
@@ -69,6 +71,11 @@ final class _SessionCollectionsJournalDataSource
   @override
   Future<String> create({required String title}) {
     return _session.createCollection(title: title);
+  }
+
+  @override
+  Future<void> undoCreate(String collectionId) {
+    return _session.undoCollectionCreation(collectionId: collectionId);
   }
 
   @override
@@ -421,6 +428,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(
           width: 28,
           child: Text(
@@ -583,6 +591,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   }
 
   void _open(String collectionId) {
+    ref.read(daymarkNoticeProvider.notifier).dismiss();
     setState(() {
       _selectedCollectionId = collectionId;
       _collectionFuture = _dataSource().load(collectionId);
@@ -611,13 +620,14 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() => _saving = true);
     try {
-      await _dataSource().create(title: title);
+      final String collectionId = await _dataSource().create(title: title);
       if (!mounted) return;
       _titleController.clear();
       setState(() {
         _collectionsFuture = _dataSource().list();
         _saving = false;
       });
+      _showCollectionCreationUndo(collectionId);
       _restoreActiveFocus();
     } catch (error, stackTrace) {
       _reportUnexpectedCollectionsError('create', error, stackTrace);
@@ -626,6 +636,39 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           .read(daymarkNoticeProvider.notifier)
           .showError(l10n.createCollectionFailed);
       setState(() => _saving = false);
+    }
+  }
+
+  void _showCollectionCreationUndo(String collectionId) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    ref
+        .read(daymarkNoticeProvider.notifier)
+        .showUndo(
+          message: l10n.collectionCreated,
+          actionLabel: l10n.undo,
+          onUndo: () => _undoCollectionCreation(collectionId),
+        );
+  }
+
+  Future<void> _undoCollectionCreation(String collectionId) async {
+    JournalActivityGuard.recordActivity(context);
+    try {
+      await _dataSource().undoCreate(collectionId);
+      if (!mounted) return;
+      setState(() {
+        _collectionsFuture = _dataSource().list();
+      });
+      _restoreActiveFocus();
+    } catch (error, stackTrace) {
+      _reportUnexpectedCollectionsError(
+        'Collection creation undo',
+        error,
+        stackTrace,
+      );
+      if (!mounted) return;
+      ref
+          .read(daymarkNoticeProvider.notifier)
+          .showError(AppLocalizations.of(context).undoCollectionCreationFailed);
     }
   }
 

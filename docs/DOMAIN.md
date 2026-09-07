@@ -217,3 +217,14 @@ On the isolated `feat/daily-task-migration` branch, the maintainer has explicitl
 - an Event with outgoing migration lineage is considered resolved for Future arrival review even though Events do not acquire Task state.
 
 These rules remain experimental until this PR is explicitly promoted into the main Daymark product.
+
+### Immediate correction window
+
+Immediate Undo is a correction affordance, not historical editing. A newly
+created Collection may be removed only while it is still untouched and has no
+entries, references, or Index membership. Once it participates in journal
+structure, deletion through that short-lived Undo is rejected.
+
+Signifiers remain optional metadata on an Entry. Search may use that metadata
+as a read-only filter, including combinations of multiple Signifiers, without
+changing ownership, state, migration, or the canonical Bullet grammar.

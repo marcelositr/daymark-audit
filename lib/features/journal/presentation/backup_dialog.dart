@@ -35,6 +35,7 @@ final class _BackupDialogState extends ConsumerState<BackupDialog> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _busy = false;
+  bool _passwordVisible = false;
   String? _errorMessage;
 
   @override
@@ -60,13 +61,30 @@ final class _BackupDialogState extends ConsumerState<BackupDialog> {
             TextField(
               controller: _passwordController,
               enabled: !_busy,
-              obscureText: true,
+              obscureText: !_passwordVisible,
               autocorrect: false,
               enableSuggestions: false,
               autofillHints: const <String>[AutofillHints.password],
               textInputAction: TextInputAction.done,
               onSubmitted: _busy ? null : (_) => _createBackup(),
-              decoration: InputDecoration(labelText: l10n.masterPassword),
+              decoration: InputDecoration(
+                labelText: l10n.masterPassword,
+                suffixIcon: IconButton(
+                  onPressed: _busy
+                      ? null
+                      : () {
+                          setState(() => _passwordVisible = !_passwordVisible);
+                        },
+                  tooltip: _passwordVisible
+                      ? l10n.hidePassword
+                      : l10n.showPassword,
+                  icon: Icon(
+                    _passwordVisible
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
+              ),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),

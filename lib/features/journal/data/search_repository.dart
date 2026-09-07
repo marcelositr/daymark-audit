@@ -20,6 +20,7 @@ final class JournalSearchResult {
     this.collectionTitle,
     this.monthlySection,
     this.monthlyCalendarDate,
+    this.signifiers = const <JournalSignifier>{},
   });
 
   final String entryId;
@@ -34,6 +35,7 @@ final class JournalSearchResult {
   final String? collectionTitle;
   final JournalMonthlySection? monthlySection;
   final String? monthlyCalendarDate;
+  final Set<JournalSignifier> signifiers;
 }
 
 /// Read-only local search over existing journal Entries.
@@ -48,10 +50,11 @@ final class JournalSearchRepository {
 
   Future<List<JournalSearchResult>> search(
     String rawQuery, {
+    Set<JournalSignifier> signifiers = const <JournalSignifier>{},
     int limit = 100,
   }) async {
     final String query = rawQuery.trim();
-    if (query.isEmpty) {
+    if (query.isEmpty && signifiers.isEmpty) {
       return const <JournalSearchResult>[];
     }
     if (limit < 1 || limit > 200) {
@@ -78,7 +81,13 @@ final class JournalSearchRepository {
         p.monthly_calendar_date,
         l.kind AS log_kind,
         l.period_start,
-        c.title AS collection_title
+        c.title AS collection_title,
+        (
+          SELECT GROUP_CONCAT(s.builtin_code, ',')
+          FROM entry_signifiers AS es
+          JOIN signifiers AS s ON s.id = es.signifier_id
+          WHERE es.entry_id = e.id AND s.kind = 'builtin'
+        ) AS signifier_codes
       FROM entries AS e
       INNER JOIN entry_placements AS p ON p.entry_id = e.id
       LEFT JOIN logs AS l ON l.id = p.log_id
@@ -99,7 +108,13 @@ final class JournalSearchRepository {
 
       for (final row in rows) {
         final String content = row.read<String>('content');
-        if (!content.toLowerCase().contains(foldedQuery)) {
+        final Set<JournalSignifier> entrySignifiers = _signifiersFromCsv(
+          row.readNullable<String>('signifier_codes'),
+        );
+        if (query.isNotEmpty && !content.toLowerCase().contains(foldedQuery)) {
+          continue;
+        }
+        if (!entrySignifiers.containsAll(signifiers)) {
           continue;
         }
 
@@ -135,6 +150,7 @@ final class JournalSearchRepository {
             monthlyCalendarDate: row.readNullable<String>(
               'monthly_calendar_date',
             ),
+            signifiers: entrySignifiers,
           ),
         );
 
@@ -184,3 +200,12 @@ JournalMonthlySection? _monthlySectionFromCode(String? value) =>
       'tasks' => JournalMonthlySection.tasks,
       _ => throw JournalInvariantException('Unknown Monthly section: $value.'),
     };
+
+Set<JournalSignifier> _signifiersFromCsv(String? value) {
+  if (value == null || value.isEmpty) {
+    return const <JournalSignifier>{};
+  }
+  return <JournalSignifier>{
+    for (final String code in value.split(',')) journalSignifierFromCode(code),
+  };
+}

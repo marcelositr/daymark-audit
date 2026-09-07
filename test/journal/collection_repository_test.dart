@@ -35,15 +35,36 @@ void main() {
     await database.close();
   });
 
-  test('creates and lists Collections in deliberate order', () async {
+  test('lists newest Collections first', () async {
     await collections.create(title: 'Books');
     await collections.create(title: 'Garden');
 
     final result = await collections.list();
 
     expect(result, hasLength(2));
-    expect(result[0].title, 'Books');
-    expect(result[1].title, 'Garden');
+    expect(result[0].title, 'Garden');
+    expect(result[1].title, 'Books');
+  });
+
+  test('undoes creation only while a Collection remains empty', () async {
+    final String emptyId = await collections.create(title: 'Mistake');
+
+    await collections.undoCreate(emptyId);
+
+    expect(await collections.list(), isEmpty);
+
+    final String usedId = await collections.create(title: 'Used');
+    await collections.capture(
+      collectionId: usedId,
+      type: JournalEntryType.note,
+      content: 'Keep this',
+    );
+
+    await expectLater(
+      collections.undoCreate(usedId),
+      throwsA(isA<JournalInvariantException>()),
+    );
+    expect((await collections.load(usedId)).entries, hasLength(1));
   });
 
   test('captures Task Event and Note as Collection-owned entries', () async {
