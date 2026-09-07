@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dev-check:
@@ -36,19 +36,6 @@ jobs:
           flutter-version: '3.47.2'
           channel: stable
           cache: true
-
-      - name: Apply pinned formatter to Rapid Logging parser
-        run: |
-          git fetch origin feat/daily-task-migration
-          git checkout -B feat/daily-task-migration origin/feat/daily-task-migration
-          dart format lib/features/journal/presentation/rapid_log_input.dart
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/features/journal/presentation/rapid_log_input.dart
-          if ! git diff --cached --quiet; then
-            git commit -m "style: format rapid logging parser"
-            git push origin HEAD:feat/daily-task-migration
-          fi
 
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
