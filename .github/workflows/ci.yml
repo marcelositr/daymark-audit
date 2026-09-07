@@ -79,7 +79,37 @@ jobs:
                   f'unexpected app shell triple-quote count: {len(quote_lines)}'
               )
 
-          path.write_text('\n'.join(lines) + '\n')
+          text = '\n'.join(lines) + '\n'
+
+          old = '''replace_once(
+              "lib/features/journal/presentation/journal_access_screen.dart",
+              """  String? _errorMessage;
+          """,
+              """  String? _errorMessage;
+            bool _passwordVisible = false;
+            bool _confirmationVisible = false;
+          """,
+          )'''
+          new = '''replace_once(
+              "lib/features/journal/presentation/journal_access_screen.dart",
+              """  final TextEditingController _confirmationController = TextEditingController();
+
+            String? _errorMessage;
+          """,
+              """  final TextEditingController _confirmationController = TextEditingController();
+
+            String? _errorMessage;
+            bool _passwordVisible = false;
+            bool _confirmationVisible = false;
+          """,
+          )'''
+
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('journal access polish marker not found')
+
+          path.write_text(text)
           PY
           python3 -m py_compile /tmp/apply_polish_round.py
           python3 /tmp/apply_polish_round.py
