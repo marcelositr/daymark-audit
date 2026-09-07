@@ -22,6 +22,7 @@ import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
 import 'journal_activity_guard.dart';
 import 'task_collection_migration_dialog.dart';
+import 'task_migration_dialog.dart';
 import 'task_schedule_dialog.dart';
 import 'tracker_create_dialog.dart';
 import 'tracker_data_source.dart';
@@ -957,14 +958,38 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     }
 
     final DateTime actionMonth = _month;
+    final DateTime actionDate = _dateOnly(_now());
+    String? migrationMethodDate;
     String? migrationCollectionId;
     if (action == _MonthlyEntryAction.migrate) {
-      migrationCollectionId = await showTaskCollectionMigrationDialog(
-        context: context,
-        dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
-      );
-      if (!mounted || migrationCollectionId == null) {
+      final TaskMigrationDestination? destination =
+          await showTaskMigrationDestinationDialog(context: context);
+      if (!mounted || destination == null) {
         return;
+      }
+
+      switch (destination) {
+        case TaskMigrationDestination.nextDay:
+          migrationMethodDate = nextTaskMigrationMethodDate(actionDate);
+          break;
+        case TaskMigrationDestination.date:
+          migrationMethodDate = await showTaskDailyMigrationDatePicker(
+            context: context,
+            anchor: actionDate,
+          );
+          if (!mounted || migrationMethodDate == null) {
+            return;
+          }
+          break;
+        case TaskMigrationDestination.collection:
+          migrationCollectionId = await showTaskCollectionMigrationDialog(
+            context: context,
+            dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
+          );
+          if (!mounted || migrationCollectionId == null) {
+            return;
+          }
+          break;
       }
     }
 
@@ -1001,12 +1026,21 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
           await dataSource.completeTask(entryId: entry.id);
           break;
         case _MonthlyEntryAction.migrate:
-          await ref
-              .read(taskCollectionMigrationDataSourceProvider)
-              .migrateTask(
-                entryId: entry.id,
-                collectionId: migrationCollectionId!,
-              );
+          if (migrationMethodDate != null) {
+            await ref
+                .read(dailyTaskMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  methodDate: migrationMethodDate,
+                );
+          } else {
+            await ref
+                .read(taskCollectionMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  collectionId: migrationCollectionId!,
+                );
+          }
           break;
         case _MonthlyEntryAction.schedule:
           await dataSource.scheduleTaskToFuture(
@@ -1134,6 +1168,8 @@ bool _isAfterMonth(DateTime left, DateTime right) {
   return left.year > right.year ||
       (left.year == right.year && left.month > right.month);
 }
+
+DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 
 String _formatMethodDate(DateTime date) {
   return '${date.year.toString().padLeft(4, '0')}-'
