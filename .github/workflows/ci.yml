@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dev-check:
@@ -29,8 +29,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Set up Flutter 3.47.2
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -54,16 +52,8 @@ jobs:
       - name: Reject stale Drift generated artifacts
         run: git diff --exit-code -- lib/core/database/daymark_database.g.dart drift_schemas
 
-      - name: Apply pinned Dart formatting
-        run: |
-          dart format lib test
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add lib test
-          if ! git diff --cached --quiet; then
-            git commit -m "style: apply pinned dart formatter"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test
 
       - name: Analyze
         run: flutter analyze
