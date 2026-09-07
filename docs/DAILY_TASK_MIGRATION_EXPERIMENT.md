@@ -8,17 +8,19 @@ It does not authorize a merge into the frozen Daymark product baseline. The main
 
 ## Problem
 
-The frozen product allows an open Task to be migrated to an existing Collection or scheduled to a Future Log month, but it does not allow a Task reviewed in Today to be deliberately carried into another Daily Log.
+The frozen product allows an open Task to be migrated to an existing Collection or scheduled to a Future Log month, but it does not allow an unresolved Task from Today or the current Monthly Task list to be deliberately carried into a Daily Log.
 
 That omission creates unnecessary friction for the common Bullet Journal action of reviewing an unresolved Task and carrying it forward without retyping its content.
 
 ## Experimental behavior
 
-For an open Task in Today, **Migrate** offers three deliberate destinations:
+For an open Task in **Today** or the current **Monthly Tasks** section, **Migrate** offers three deliberate destinations:
 
-1. **Next day** — migrate to the immediately following Daily Log.
+1. **Next day** — migrate to the Daily Log immediately following the current method date.
 2. **Date** — migrate to an explicitly selected future Daily Log date.
 3. **Collection** — preserve the existing migration-to-Collection behavior.
+
+For Monthly Tasks, the Daily destination is anchored to the current method date, not to the first day of the Monthly Log.
 
 **Schedule** remains separate and continues to target a Future Log month.
 
@@ -26,19 +28,19 @@ No unresolved Task is rolled forward automatically. The user must choose Migrate
 
 ## Semantics
 
-Daily-to-Daily migration uses the existing `migrated` movement kind and `>` source state.
+Migration into a Daily Log uses the existing `migrated` movement kind and `>` source state.
 
 The operation:
 
 - requires an open Task;
-- preserves the source Entry in its original Daily Log;
+- preserves the source Entry in its original Daily or Monthly Log;
 - changes the source Task state to `migrated`;
 - creates a fresh open Task in the destination Daily Log with the same content;
 - records the existing migration lineage from source Entry ID to destination Entry ID;
 - does not move an Entry in place;
 - does not change the meaning of scheduling (`<`).
 
-The destination date must be later than Today in the experimental UI.
+The destination date must be later than the current method date in the experimental UI.
 
 ## Persistence impact
 
@@ -46,7 +48,7 @@ No database schema change is required.
 
 The existing schema already supports:
 
-- Daily Log ownership through `logs` and `entry_placements`;
+- Daily and Monthly ownership through `logs` and `entry_placements`;
 - `migrated` Task state;
 - source/destination lineage through `migrations`;
 - fresh destination Entry identity.
@@ -57,13 +59,14 @@ The experiment therefore preserves schema v2 and existing encrypted persistence 
 
 Before this experiment can be considered for the main Daymark repository, evidence must show:
 
-- source Task remains historically present with `migrated` state;
-- destination Daily Log receives a distinct open Task;
+- Today Task migration preserves source history and creates a distinct open Daily destination Task;
+- Monthly Task migration preserves the Monthly source with `migrated` state and creates a distinct open Daily destination Task;
 - content is preserved without retyping;
 - migration lineage points to the destination Entry;
 - lock/unlock preserves source, destination, state, and lineage;
 - invalid or non-open sources do not create destination Daily Logs;
-- Today exposes Next day, future date, and existing Collection destinations deliberately;
+- Today and Monthly Tasks expose Next day, future date, and existing Collection destinations deliberately;
+- historical Monthly remains read-only;
 - existing Future scheduling and Collection migration behavior remains unchanged;
 - formatter, analyzer, complete tests, Linux build, and Android build remain green on the exact candidate head.
 
