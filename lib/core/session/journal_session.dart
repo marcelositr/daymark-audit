@@ -132,6 +132,20 @@ final class JournalSession {
     );
   }
 
+  Future<void> captureMonthlyCalendarTask({
+    required String logId,
+    required String calendarDate,
+    required String content,
+  }) {
+    return run(
+      () => monthlyLog.captureCalendarTask(
+        logId: logId,
+        calendarDate: calendarDate,
+        content: content,
+      ),
+    );
+  }
+
   Future<void> captureMonthlyTask({
     required String logId,
     required String content,
@@ -204,6 +218,22 @@ final class JournalSession {
     );
   }
 
+  Future<Set<JournalSignifier>> listEntrySignifiers({required String entryId}) {
+    return run(() => service.listEntrySignifiers(entryId: entryId));
+  }
+
+  Future<void> replaceEntrySignifiers({
+    required String entryId,
+    required Set<JournalSignifier> signifiers,
+  }) {
+    return run(
+      () => service.replaceEntrySignifiers(
+        entryId: entryId,
+        signifiers: signifiers,
+      ),
+    );
+  }
+
   Future<void> migrateTaskToDaily({
     required String entryId,
     required String methodDate,
@@ -244,6 +274,33 @@ final class JournalSession {
         destinationOwner: JournalLogOwner(
           logId: destination.logId,
           monthlySection: JournalMonthlySection.tasks,
+        ),
+      );
+    });
+  }
+
+  Future<void> migrateFutureEventToMonthlyCalendar({
+    required String entryId,
+    required String periodStart,
+    required String calendarDate,
+  }) {
+    return run(() async {
+      validateJournalMonthStart(periodStart);
+      validateJournalMethodDate(calendarDate);
+      await _requireFutureEventCalendarDestination(
+        entryId: entryId,
+        periodStart: periodStart,
+        calendarDate: calendarDate,
+      );
+      final MonthlyLogSnapshot destination = await monthlyLog.loadOrCreate(
+        periodStart,
+      );
+      await service.migrate(
+        sourceEntryId: entryId,
+        destinationOwner: JournalLogOwner(
+          logId: destination.logId,
+          monthlySection: JournalMonthlySection.calendar,
+          monthlyCalendarDate: calendarDate,
         ),
       );
     });
@@ -356,6 +413,48 @@ final class JournalSession {
     throw const JournalInvariantException(
       'Monthly Task migration requires a Monthly or Future source.',
     );
+  }
+
+  Future<void> _requireFutureEventCalendarDestination({
+    required String entryId,
+    required String periodStart,
+    required String calendarDate,
+  }) async {
+    if (!calendarDate.startsWith(periodStart.substring(0, 7))) {
+      throw const JournalInvariantException(
+        'Future Event migration must choose a day in the matching month.',
+      );
+    }
+    final row = await database
+        .customSelect(
+          '''
+          SELECT e.entry_type, l.kind, l.period_start,
+                 CASE WHEN m.source_entry_id IS NULL THEN 0 ELSE 1 END
+                   AS has_outgoing_migration
+          FROM entries e
+          JOIN entry_placements p ON p.entry_id = e.id
+          LEFT JOIN logs l ON l.id = p.log_id
+          LEFT JOIN migrations m ON m.source_entry_id = e.id
+          WHERE e.id = ?
+          ''',
+          variables: <Variable<Object>>[Variable.withString(entryId)],
+        )
+        .getSingleOrNull();
+    if (row == null) {
+      throw JournalNotFoundException('Entry', entryId);
+    }
+    if (row.read<String>('entry_type') != JournalEntryType.event.code ||
+        row.readNullable<String>('kind') != JournalLogKind.future.code ||
+        row.readNullable<String>('period_start') != periodStart) {
+      throw const JournalInvariantException(
+        'Monthly Calendar migration requires an Event from the matching Future Log.',
+      );
+    }
+    if (row.read<int>('has_outgoing_migration') != 0) {
+      throw const JournalInvariantException(
+        'An entry may have only one direct outgoing migration.',
+      );
+    }
   }
 
   Future<void> close() async {

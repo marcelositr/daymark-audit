@@ -20,7 +20,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
 import 'journal_activity_guard.dart';
+import 'monthly_calendar_task_data_source.dart';
 import 'task_collection_migration_dialog.dart';
 import 'task_migration_dialog.dart';
 import 'task_schedule_dialog.dart';
@@ -146,6 +148,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
   late bool _followingCurrentMonth;
   Timer? _monthRolloverTimer;
   late _MonthlyViewSection _section;
+  JournalEntryType _calendarEntryType = JournalEntryType.event;
   bool _saving = false;
   bool _trackerSaving = false;
   bool _reflecting = false;
@@ -454,34 +457,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                     for (final MonthlyLogEntry entry in entries)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: _followingCurrentMonth
-                            ? PopupMenuButton<_MonthlyEntryAction>(
-                                enabled: _entryActionId == null,
-                                tooltip: l10n.entryActions,
-                                padding: EdgeInsets.zero,
-                                onSelected: (action) {
-                                  unawaited(_applyEntryAction(entry, action));
-                                },
-                                itemBuilder: (context) => [
-                                  PopupMenuItem<_MonthlyEntryAction>(
-                                    value: _MonthlyEntryAction.reference,
-                                    child: Text(l10n.referenceEntry),
-                                  ),
-                                ],
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: Text(
-                                    '○ ${entry.content}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyLarge,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                '○ ${entry.content}',
-                                style: Theme.of(context).textTheme.bodyLarge,
-                              ),
+                        child: _buildCalendarEntryRow(context, l10n, entry),
                       ),
                   ],
                 ),
@@ -490,6 +466,106 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCalendarEntryRow(
+    BuildContext context,
+    AppLocalizations l10n,
+    MonthlyLogEntry entry,
+  ) {
+    final bool actionInProgress = _entryActionId == entry.id;
+    final bool openTask =
+        entry.type == JournalEntryType.task &&
+        entry.taskState == JournalTaskState.open;
+    final TextStyle? entryStyle = Theme.of(context).textTheme.bodyLarge;
+    final Widget marker = actionInProgress
+        ? const Center(
+            child: SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        : Text(
+            _monthlyCalendarEntrySymbol(entry),
+            textAlign: TextAlign.center,
+            style: entry.taskState == JournalTaskState.discarded
+                ? Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(decoration: TextDecoration.lineThrough)
+                : Theme.of(context).textTheme.titleMedium,
+          );
+    final Widget row = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EntrySignifierMarks(entryId: entry.id),
+        SizedBox(width: 28, child: marker),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Semantics(
+            label: journalEntrySemanticLabel(
+              l10n,
+              type: entry.type,
+              taskState: entry.taskState,
+              content: entry.content,
+            ),
+            child: ExcludeSemantics(
+              child: Text(
+                entry.content,
+                style: entry.taskState == JournalTaskState.discarded
+                    ? entryStyle?.copyWith(
+                        decoration: TextDecoration.lineThrough,
+                      )
+                    : entryStyle,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    if (!_followingCurrentMonth || actionInProgress) {
+      return row;
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: PopupMenuButton<_MonthlyEntryAction>(
+        enabled: _entryActionId == null,
+        tooltip: l10n.entryActions,
+        padding: EdgeInsets.zero,
+        onSelected: (action) {
+          unawaited(_applyEntryAction(entry, action));
+        },
+        itemBuilder: (context) => [
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.complete,
+              child: Text(l10n.completeTask),
+            ),
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.migrate,
+              child: Text(l10n.migrateTask),
+            ),
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.schedule,
+              child: Text(l10n.scheduleTask),
+            ),
+          PopupMenuItem(
+            value: _MonthlyEntryAction.reference,
+            child: Text(l10n.referenceEntry),
+          ),
+          PopupMenuItem(
+            value: _MonthlyEntryAction.signifiers,
+            child: Text(l10n.signifiers),
+          ),
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.discard,
+              child: Text(l10n.discardTask),
+            ),
+        ],
+        child: row,
+      ),
     );
   }
 
@@ -556,6 +632,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(width: 28, child: marker),
         const SizedBox(width: 8),
         Expanded(
@@ -615,6 +692,11 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
               value: _MonthlyEntryAction.reference,
               child: Text(l10n.referenceEntry),
             ),
+          if (!_reflecting)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.signifiers,
+              child: Text(l10n.signifiers),
+            ),
           if (openTask)
             PopupMenuItem(
               value: _MonthlyEntryAction.discard,
@@ -648,6 +730,28 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             ],
           ),
           const SizedBox(width: 12),
+          DaymarkDropdownButton<JournalEntryType>(
+            value: _calendarEntryType,
+            onChanged: _saving
+                ? null
+                : (value) {
+                    if (value != null) {
+                      setState(() => _calendarEntryType = value);
+                      _restoreComposerFocus();
+                    }
+                  },
+            items: [
+              DropdownMenuItem(
+                value: JournalEntryType.event,
+                child: Text(l10n.entryEvent),
+              ),
+              DropdownMenuItem(
+                value: JournalEntryType.task,
+                child: Text(l10n.entryTask),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
         ],
         Expanded(
           child: Focus(
@@ -664,7 +768,9 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
               onChanged: (_) => JournalActivityGuard.recordActivity(context),
               decoration: InputDecoration(
                 hintText: calendar
-                    ? l10n.monthlyEventHint
+                    ? (_calendarEntryType == JournalEntryType.task
+                          ? l10n.monthlyCalendarTaskHint
+                          : l10n.monthlyEventHint)
                     : l10n.monthlyTaskHint,
                 isDense: true,
               ),
@@ -801,13 +907,24 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
         for (final MonthlyLogEntry entry in snapshot.taskEntries) entry.id,
       };
       if (section == JournalMonthlySection.calendar) {
-        await dataSource.captureCalendarEvent(
-          logId: snapshot.logId,
-          calendarDate: _formatMethodDate(
-            DateTime(month.year, month.month, selectedDay),
-          ),
-          content: content,
+        final String calendarDate = _formatMethodDate(
+          DateTime(month.year, month.month, selectedDay),
         );
+        if (_calendarEntryType == JournalEntryType.task) {
+          await ref
+              .read(monthlyCalendarTaskDataSourceProvider)
+              .capture(
+                logId: snapshot.logId,
+                calendarDate: calendarDate,
+                content: content,
+              );
+        } else {
+          await dataSource.captureCalendarEvent(
+            logId: snapshot.logId,
+            calendarDate: calendarDate,
+            content: content,
+          );
+        }
       } else {
         await dataSource.captureTask(logId: snapshot.logId, content: content);
       }
@@ -994,13 +1111,34 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     if (_entryActionId != null || !_followingCurrentMonth) {
       return;
     }
-    if (_reflecting && action == _MonthlyEntryAction.reference) {
+    if (_reflecting &&
+        (action == _MonthlyEntryAction.reference ||
+            action == _MonthlyEntryAction.signifiers)) {
       return;
     }
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
-    if (action != _MonthlyEntryAction.reference && !openTask) {
+    if (action != _MonthlyEntryAction.reference &&
+        action != _MonthlyEntryAction.signifiers &&
+        !openTask) {
+      return;
+    }
+    if (action == _MonthlyEntryAction.signifiers) {
+      try {
+        await showEntrySignifierDialog(
+          context: context,
+          ref: ref,
+          entryId: entry.id,
+        );
+      } catch (error, stackTrace) {
+        _reportUnexpectedMonthlyError('signifiers', error, stackTrace);
+        if (mounted) {
+          ref
+              .read(daymarkNoticeProvider.notifier)
+              .showError(AppLocalizations.of(context).signifierUpdateFailed);
+        }
+      }
       return;
     }
 
@@ -1120,6 +1258,8 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
         case _MonthlyEntryAction.discard:
           await dataSource.discardTask(entryId: entry.id);
           break;
+        case _MonthlyEntryAction.signifiers:
+          break;
       }
 
       if (!mounted) {
@@ -1223,7 +1363,14 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
 
 enum _MonthlyViewSection { calendar, tasks, tracker }
 
-enum _MonthlyEntryAction { complete, migrate, schedule, reference, discard }
+enum _MonthlyEntryAction {
+  complete,
+  migrate,
+  schedule,
+  reference,
+  signifiers,
+  discard,
+}
 
 int _daysInMonth(DateTime month) {
   return DateTime(month.year, month.month + 1, 0).day;
@@ -1256,6 +1403,13 @@ String _formatMethodDate(DateTime date) {
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
 }
+
+String _monthlyCalendarEntrySymbol(MonthlyLogEntry entry) =>
+    switch (entry.type) {
+      JournalEntryType.task => _taskSymbol(entry.taskState),
+      JournalEntryType.event => '○',
+      JournalEntryType.note => '–',
+    };
 
 String _taskSymbol(JournalTaskState? state) => switch (state) {
   JournalTaskState.completed => '×',

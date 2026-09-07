@@ -54,6 +54,20 @@ final class JournalService {
     );
   }
 
+  Future<Set<JournalSignifier>> listEntrySignifiers({required String entryId}) {
+    return _repository.listEntrySignifiers(entryId: entryId);
+  }
+
+  Future<void> replaceEntrySignifiers({
+    required String entryId,
+    required Set<JournalSignifier> signifiers,
+  }) {
+    return _repository.replaceEntrySignifiers(
+      entryId: entryId,
+      signifiers: signifiers,
+    );
+  }
+
   Future<String> migrate({
     required String sourceEntryId,
     required JournalEntryOwner destinationOwner,

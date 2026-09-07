@@ -167,8 +167,8 @@
   "searchNoResults": "No hay entradas coincidentes.",
   "searchFailed": "No se pudo buscar en el diario.",
   "futureHistoryReadOnly": "Este registro futuro es de solo lectura.",
-  "reviewCurrentFutureLog": "Revisar tareas futuras que ya llegaron",
-  "futureArrivalReviewPrompt": "Este mes del Registro Futuro ya llegó. Revisa cada tarea abierta y decide si migrarla a las Tareas Mensuales actuales, completarla o descartarla.",
+  "reviewCurrentFutureLog": "Revisar entradas de Future que llegaron",
+  "futureArrivalReviewPrompt": "Este mes del Future Log ha llegado. Revisa deliberadamente las Tasks y Events pendientes. Las Tasks pueden pasar a Monthly Tasks, completarse o descartarse; los Events pueden pasar a un día elegido del Monthly Calendar.",
   "migrateToCurrentMonth": "Migrar al mes actual",
   "referenceActions": "Acciones de la referencia",
   "removeCollectionReference": "Eliminar referencia",
@@ -180,5 +180,13 @@
   "indexItemUpdateFailed": "No se pudo actualizar este elemento del índice.",
   "entryCreated": "Entrada creada.",
   "undo": "Deshacer",
-  "undoCaptureFailed": "No se pudo deshacer esta captura."
+  "undoCaptureFailed": "No se pudo deshacer esta captura.",
+  "monthlyCalendarTaskHint": "Añade una tarea para este día",
+  "signifiers": "Significadores",
+  "signifierPriority": "Prioridad",
+  "signifierInspiration": "Inspiración",
+  "signifierExplore": "Explorar",
+  "signifierUpdateFailed": "No se pudieron actualizar los significadores.",
+  "migrateEventToCalendar": "Mover al Monthly Calendar",
+  "eventMigrationFailed": "No se pudo migrar este evento."
 }

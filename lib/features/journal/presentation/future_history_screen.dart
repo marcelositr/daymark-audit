@@ -14,6 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
+import 'future_event_migration_data_source.dart';
 import 'task_migration_dialog.dart';
 
 abstract interface class FutureHistoryDataSource {
@@ -157,6 +159,8 @@ class _FutureHistoryScreenState extends ConsumerState<FutureHistoryScreen> {
         final bool openTask =
             entry.type == JournalEntryType.task &&
             entry.taskState == JournalTaskState.open;
+        final bool reviewableEvent =
+            entry.type == JournalEntryType.event && !entry.hasOutgoingMigration;
         final TextStyle? style = Theme.of(context).textTheme.bodyLarge;
         final TextStyle? markerStyle = Theme.of(context).textTheme.titleMedium;
         final Widget marker = actionInProgress
@@ -178,6 +182,7 @@ class _FutureHistoryScreenState extends ConsumerState<FutureHistoryScreen> {
         final Widget row = Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            EntrySignifierMarks(entryId: entry.id),
             SizedBox(width: 28, child: marker),
             const SizedBox(width: 8),
             Expanded(
@@ -205,7 +210,10 @@ class _FutureHistoryScreenState extends ConsumerState<FutureHistoryScreen> {
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
-          child: !_arrivedCurrentMonth || !openTask || actionInProgress
+          child:
+              !_arrivedCurrentMonth ||
+                  (!openTask && !reviewableEvent) ||
+                  actionInProgress
               ? row
               : SizedBox(
                   width: double.infinity,
@@ -218,18 +226,27 @@ class _FutureHistoryScreenState extends ConsumerState<FutureHistoryScreen> {
                     },
                     itemBuilder: (context) =>
                         <PopupMenuEntry<_FutureArrivalAction>>[
-                          PopupMenuItem<_FutureArrivalAction>(
-                            value: _FutureArrivalAction.migrateToMonthly,
-                            child: Text(l10n.migrateToCurrentMonth),
-                          ),
-                          PopupMenuItem<_FutureArrivalAction>(
-                            value: _FutureArrivalAction.complete,
-                            child: Text(l10n.completeTask),
-                          ),
-                          PopupMenuItem<_FutureArrivalAction>(
-                            value: _FutureArrivalAction.discard,
-                            child: Text(l10n.discardTask),
-                          ),
+                          if (openTask)
+                            PopupMenuItem<_FutureArrivalAction>(
+                              value: _FutureArrivalAction.migrateToMonthly,
+                              child: Text(l10n.migrateToCurrentMonth),
+                            ),
+                          if (reviewableEvent)
+                            PopupMenuItem<_FutureArrivalAction>(
+                              value:
+                                  _FutureArrivalAction.migrateEventToCalendar,
+                              child: Text(l10n.migrateEventToCalendar),
+                            ),
+                          if (openTask)
+                            PopupMenuItem<_FutureArrivalAction>(
+                              value: _FutureArrivalAction.complete,
+                              child: Text(l10n.completeTask),
+                            ),
+                          if (openTask)
+                            PopupMenuItem<_FutureArrivalAction>(
+                              value: _FutureArrivalAction.discard,
+                              child: Text(l10n.discardTask),
+                            ),
                         ],
                     child: row,
                   ),
@@ -249,8 +266,35 @@ class _FutureHistoryScreenState extends ConsumerState<FutureHistoryScreen> {
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
-    if (!openTask) {
+    final bool reviewableEvent =
+        entry.type == JournalEntryType.event && !entry.hasOutgoingMigration;
+    if (!openTask && !reviewableEvent) {
       return;
+    }
+
+    String? eventCalendarDate;
+    if (action == _FutureArrivalAction.migrateEventToCalendar) {
+      if (!reviewableEvent) {
+        return;
+      }
+      final DateTime firstDate = DateTime(_month.year, _month.month);
+      final DateTime lastDate = DateTime(_month.year, _month.month + 1, 0);
+      final DateTime now = _now();
+      final DateTime initialDate =
+          now.isBefore(firstDate) || now.isAfter(lastDate) ? firstDate : now;
+      final DateTime? selectedDate = await showDatePicker(
+        context: context,
+        initialDate: initialDate,
+        firstDate: firstDate,
+        lastDate: lastDate,
+      );
+      if (!mounted || selectedDate == null) {
+        return;
+      }
+      eventCalendarDate =
+          '${selectedDate.year.toString().padLeft(4, '0')}-'
+          '${selectedDate.month.toString().padLeft(2, '0')}-'
+          '${selectedDate.day.toString().padLeft(2, '0')}';
     }
 
     setState(() => _entryActionId = entry.id);
@@ -261,6 +305,15 @@ class _FutureHistoryScreenState extends ConsumerState<FutureHistoryScreen> {
           await ref
               .read(monthlyTaskMigrationDataSourceProvider)
               .migrateTask(entryId: entry.id, periodStart: widget.periodStart);
+          break;
+        case _FutureArrivalAction.migrateEventToCalendar:
+          await ref
+              .read(futureEventMigrationDataSourceProvider)
+              .migrateToMonthlyCalendar(
+                entryId: entry.id,
+                periodStart: widget.periodStart,
+                calendarDate: eventCalendarDate!,
+              );
           break;
         case _FutureArrivalAction.complete:
           await dataSource.completeTask(entryId: entry.id);
@@ -307,7 +360,12 @@ class _FutureHistoryScreenState extends ConsumerState<FutureHistoryScreen> {
   }
 }
 
-enum _FutureArrivalAction { migrateToMonthly, complete, discard }
+enum _FutureArrivalAction {
+  migrateToMonthly,
+  migrateEventToCalendar,
+  complete,
+  discard,
+}
 
 String _futureHistoryEntrySymbol(FutureLogEntry entry) => switch (entry.type) {
   JournalEntryType.task => switch (entry.taskState) {
@@ -318,6 +376,6 @@ String _futureHistoryEntrySymbol(FutureLogEntry entry) => switch (entry.type) {
     JournalTaskState.open => '•',
     null => '•',
   },
-  JournalEntryType.event => '○',
+  JournalEntryType.event => entry.hasOutgoingMigration ? '>' : '○',
   JournalEntryType.note => '–',
 };

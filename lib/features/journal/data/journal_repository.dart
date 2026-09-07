@@ -323,6 +323,84 @@ final class JournalRepository {
     });
   }
 
+  Future<Set<JournalSignifier>> listEntrySignifiers({
+    required String entryId,
+  }) async {
+    await _requireEntry(entryId);
+    final rows = await _database
+        .customSelect(
+          '''
+          SELECT s.builtin_code
+          FROM entry_signifiers es
+          JOIN signifiers s ON s.id = es.signifier_id
+          WHERE es.entry_id = ? AND s.kind = 'builtin'
+          ORDER BY s.builtin_code
+          ''',
+          variables: <Variable<Object>>[Variable.withString(entryId)],
+        )
+        .get();
+    return <JournalSignifier>{
+      for (final row in rows)
+        journalSignifierFromCode(row.read<String>('builtin_code')),
+    };
+  }
+
+  Future<void> replaceEntrySignifiers({
+    required String entryId,
+    required Set<JournalSignifier> signifiers,
+  }) {
+    return _database.transaction(() async {
+      await _requireEntry(entryId);
+      final Map<JournalSignifier, String> ids = <JournalSignifier, String>{};
+      for (final JournalSignifier signifier in signifiers) {
+        final existing = await _database
+            .customSelect(
+              '''
+              SELECT id
+              FROM signifiers
+              WHERE kind = 'builtin' AND builtin_code = ?
+              ''',
+              variables: <Variable<Object>>[
+                Variable.withString(signifier.code),
+              ],
+            )
+            .getSingleOrNull();
+        if (existing != null) {
+          ids[signifier] = existing.read<String>('id');
+          continue;
+        }
+        final String id = _newId();
+        await _database.customStatement(
+          '''
+          INSERT INTO signifiers (
+            id, kind, builtin_code, custom_label, custom_symbol, created_at
+          ) VALUES (?, 'builtin', ?, NULL, NULL, ?)
+          ''',
+          <Object>[id, signifier.code, _now()],
+        );
+        ids[signifier] = id;
+      }
+
+      await _database.customStatement(
+        'DELETE FROM entry_signifiers WHERE entry_id = ?',
+        <Object>[entryId],
+      );
+      for (final JournalSignifier signifier in JournalSignifier.values) {
+        final String? signifierId = ids[signifier];
+        if (signifierId == null) {
+          continue;
+        }
+        await _database.customStatement(
+          '''
+          INSERT INTO entry_signifiers (entry_id, signifier_id)
+          VALUES (?, ?)
+          ''',
+          <Object>[entryId, signifierId],
+        );
+      }
+    });
+  }
+
   Future<String> migrateEntry({
     required String sourceEntryId,
     required JournalEntryOwner destinationOwner,
@@ -395,6 +473,15 @@ final class JournalRepository {
         entryId: destinationEntryId,
         owner: resolvedDestination,
         ordinal: destinationOrdinal,
+      );
+      await _database.customStatement(
+        '''
+        INSERT INTO entry_signifiers (entry_id, signifier_id)
+        SELECT ?, signifier_id
+        FROM entry_signifiers
+        WHERE entry_id = ?
+        ''',
+        <Object>[destinationEntryId, sourceEntryId],
       );
 
       if (source.type == JournalEntryType.task) {

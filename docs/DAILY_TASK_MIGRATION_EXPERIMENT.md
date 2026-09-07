@@ -130,3 +130,19 @@ Before this experiment can be considered for the main Daymark repository, eviden
 This experiment intentionally goes beyond the current frozen-product statement that additional migration destinations are not planned.
 
 That divergence is confined to this isolated audit branch. Merging or porting the behavior into the main Daymark product requires a separate explicit maintainer decision to revise the frozen product semantics and corresponding authoritative documentation.
+
+## Dated Monthly Calendar Tasks
+
+The current Monthly Calendar may deliberately capture either an Event or a dated Task for a selected day. A dated Task remains a real Task with the normal Task lifecycle; the date belongs to its Monthly Calendar placement rather than becoming hidden Task metadata.
+
+This does not turn Monthly into a general planner. The Calendar remains one row per day and accepts only method-native Events and Tasks.
+
+## Future Event arrival
+
+When a Future Log month arrives, an Event that has not already moved may be deliberately migrated into the matching Monthly Calendar. Because Future is month-addressed, the user must explicitly choose the calendar day during migration. No day is guessed automatically.
+
+The source Future Event remains historical. The destination is a fresh Monthly Calendar Event with its own identity and migration lineage.
+
+## Signifiers
+
+Daymark exposes the three built-in optional Bullet Journal Signifiers already represented by the encrypted schema: `*` Priority, `!` Inspiration, and `◉` Explore. Signifiers remain optional context, never Entry types or Task states. Migration copies them to the fresh destination Entry while preserving them on the historical source. No custom Signifier UI is introduced.

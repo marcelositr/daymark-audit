@@ -167,8 +167,8 @@
   "searchNoResults": "No matching entries.",
   "searchFailed": "Could not search the journal.",
   "futureHistoryReadOnly": "This Future Log is read-only.",
-  "reviewCurrentFutureLog": "Review arrived Future tasks",
-  "futureArrivalReviewPrompt": "This Future Log month has arrived. Review each open Task and deliberately migrate it to the current Monthly Tasks, complete it, or discard it.",
+  "reviewCurrentFutureLog": "Review arrived Future entries",
+  "futureArrivalReviewPrompt": "This Future Log month has arrived. Review open Tasks and Events deliberately. Tasks can move to Monthly Tasks, complete, or discard; Events can move to a chosen day in the Monthly Calendar.",
   "migrateToCurrentMonth": "Migrate to current month",
   "referenceActions": "Reference actions",
   "removeCollectionReference": "Remove reference",
@@ -180,5 +180,13 @@
   "indexItemUpdateFailed": "Could not update this Index item.",
   "entryCreated": "Entry created.",
   "undo": "Undo",
-  "undoCaptureFailed": "Could not undo this capture."
+  "undoCaptureFailed": "Could not undo this capture.",
+  "monthlyCalendarTaskHint": "Add a task for this day",
+  "signifiers": "Signifiers",
+  "signifierPriority": "Priority",
+  "signifierInspiration": "Inspiration",
+  "signifierExplore": "Explore",
+  "signifierUpdateFailed": "Could not update signifiers.",
+  "migrateEventToCalendar": "Move to Monthly Calendar",
+  "eventMigrationFailed": "Could not migrate this event."
 }

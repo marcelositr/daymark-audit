@@ -94,6 +94,22 @@ final class MonthlyLogRepository {
     );
   }
 
+  Future<void> captureCalendarTask({
+    required String logId,
+    required String calendarDate,
+    required String content,
+  }) {
+    return _journalService.capture(
+      type: JournalEntryType.task,
+      content: content,
+      owner: JournalLogOwner(
+        logId: logId,
+        monthlySection: JournalMonthlySection.calendar,
+        monthlyCalendarDate: calendarDate,
+      ),
+    );
+  }
+
   Future<void> captureTask({required String logId, required String content}) {
     return _journalService.capture(
       type: JournalEntryType.task,

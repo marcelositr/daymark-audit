@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 
 import 'entry_capture_undo.dart';
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
 import 'journal_activity_guard.dart';
 import 'rapid_log_input.dart';
 
@@ -493,6 +494,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(width: 28, child: marker),
         const SizedBox(width: 8),
         Expanded(
@@ -518,7 +520,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
-    if (!openTask || actionInProgress) return row;
+    if (actionInProgress) return row;
 
     return SizedBox(
       width: double.infinity,
@@ -530,14 +532,20 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           unawaited(_applyTaskAction(entry, action));
         },
         itemBuilder: (context) => [
+          if (openTask)
+            PopupMenuItem(
+              value: _CollectionTaskAction.complete,
+              child: Text(l10n.completeTask),
+            ),
           PopupMenuItem(
-            value: _CollectionTaskAction.complete,
-            child: Text(l10n.completeTask),
+            value: _CollectionTaskAction.signifiers,
+            child: Text(l10n.signifiers),
           ),
-          PopupMenuItem(
-            value: _CollectionTaskAction.discard,
-            child: Text(l10n.discardTask),
-          ),
+          if (openTask)
+            PopupMenuItem(
+              value: _CollectionTaskAction.discard,
+              child: Text(l10n.discardTask),
+            ),
         ],
         child: row,
       ),
@@ -705,6 +713,29 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   ) async {
     final String? collectionId = _selectedCollectionId;
     if (collectionId == null || _taskActionEntryId != null) return;
+    if (action == _CollectionTaskAction.signifiers) {
+      try {
+        await showEntrySignifierDialog(
+          context: context,
+          ref: ref,
+          entryId: entry.id,
+        );
+      } catch (error, stackTrace) {
+        _reportUnexpectedCollectionsError('signifiers', error, stackTrace);
+        if (mounted) {
+          ref
+              .read(daymarkNoticeProvider.notifier)
+              .showError(AppLocalizations.of(context).signifierUpdateFailed);
+        }
+      }
+      return;
+    }
+    final bool openTask =
+        entry.type == JournalEntryType.task &&
+        entry.taskState == JournalTaskState.open;
+    if (!openTask) {
+      return;
+    }
     // Any deliberate journal action supersedes the short-lived capture Undo.
     ref.read(daymarkNoticeProvider.notifier).dismiss();
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -715,6 +746,8 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           await _dataSource().completeTask(entryId: entry.id);
         case _CollectionTaskAction.discard:
           await _dataSource().discardTask(entryId: entry.id);
+        case _CollectionTaskAction.signifiers:
+          break;
       }
       if (!mounted) return;
       setState(() {
@@ -770,7 +803,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   }
 }
 
-enum _CollectionTaskAction { complete, discard }
+enum _CollectionTaskAction { complete, signifiers, discard }
 
 enum _CollectionReferenceAction { remove }
 

@@ -10,6 +10,7 @@ final class FutureLogEntry {
     required this.taskState,
     required this.content,
     required this.ordinal,
+    this.hasOutgoingMigration = false,
   });
 
   final String id;
@@ -17,6 +18,7 @@ final class FutureLogEntry {
   final JournalTaskState? taskState;
   final String content;
   final int ordinal;
+  final bool hasOutgoingMigration;
 }
 
 final class FutureLogSnapshot {
@@ -135,9 +137,12 @@ final class FutureLogRepository {
             e.entry_type,
             e.task_state,
             e.content,
-            p.ordinal
+            p.ordinal,
+            CASE WHEN m.source_entry_id IS NULL THEN 0 ELSE 1 END
+              AS has_outgoing_migration
           FROM entry_placements p
           JOIN entries e ON e.id = p.entry_id
+          LEFT JOIN migrations m ON m.source_entry_id = e.id
           WHERE p.log_id = ?
           ORDER BY p.ordinal
           ''',
@@ -153,6 +158,7 @@ final class FutureLogRepository {
           taskState: _taskStateFromCode(row.readNullable<String>('task_state')),
           content: row.read<String>('content'),
           ordinal: row.read<int>('ordinal'),
+          hasOutgoingMigration: row.read<int>('has_outgoing_migration') != 0,
         ),
     ];
   }

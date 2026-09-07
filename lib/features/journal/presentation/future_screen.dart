@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
 import 'journal_activity_guard.dart';
 import 'rapid_log_input.dart';
 
@@ -195,14 +196,16 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
             future: _arrivedSnapshotFuture,
             builder: (context, snapshot) {
               final FutureLogSnapshot? arrived = snapshot.data;
-              final bool hasOpenTasks =
+              final bool hasReviewableEntries =
                   arrived?.entries.any(
                     (entry) =>
-                        entry.type == JournalEntryType.task &&
-                        entry.taskState == JournalTaskState.open,
+                        (entry.type == JournalEntryType.task &&
+                            entry.taskState == JournalTaskState.open) ||
+                        (entry.type == JournalEntryType.event &&
+                            !entry.hasOutgoingMigration),
                   ) ??
                   false;
-              if (!hasOpenTasks) {
+              if (!hasReviewableEntries) {
                 return const SizedBox.shrink();
               }
               return Padding(
@@ -326,6 +329,7 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(width: 28, child: marker),
         const SizedBox(width: 8),
         Expanded(
@@ -373,6 +377,10 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
           PopupMenuItem(
             value: _FutureEntryAction.reference,
             child: Text(l10n.referenceEntry),
+          ),
+          PopupMenuItem(
+            value: _FutureEntryAction.signifiers,
+            child: Text(l10n.signifiers),
           ),
           if (openTask)
             PopupMenuItem(
@@ -625,7 +633,26 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
-    if (action != _FutureEntryAction.reference && !openTask) {
+    if (action != _FutureEntryAction.reference &&
+        action != _FutureEntryAction.signifiers &&
+        !openTask) {
+      return;
+    }
+    if (action == _FutureEntryAction.signifiers) {
+      try {
+        await showEntrySignifierDialog(
+          context: context,
+          ref: ref,
+          entryId: entry.id,
+        );
+      } catch (error, stackTrace) {
+        _reportUnexpectedFutureError('signifiers', error, stackTrace);
+        if (mounted) {
+          ref
+              .read(daymarkNoticeProvider.notifier)
+              .showError(AppLocalizations.of(context).signifierUpdateFailed);
+        }
+      }
       return;
     }
 
@@ -661,6 +688,8 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
           break;
         case _FutureEntryAction.discard:
           await dataSource.discardTask(entryId: entry.id);
+          break;
+        case _FutureEntryAction.signifiers:
           break;
       }
 
@@ -751,7 +780,7 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
   }
 }
 
-enum _FutureEntryAction { complete, reference, discard }
+enum _FutureEntryAction { complete, reference, signifiers, discard }
 
 String _entrySymbol(FutureLogEntry entry) => switch (entry.type) {
   JournalEntryType.task => switch (entry.taskState) {
