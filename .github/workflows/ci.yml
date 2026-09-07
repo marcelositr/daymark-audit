@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dev-check:
@@ -36,20 +36,6 @@ jobs:
           flutter-version: '3.47.2'
           channel: stable
           cache: true
-
-      - name: Apply Bullet Journal experiment update
-        run: |
-          git fetch origin feat/daily-task-migration
-          git checkout -B feat/daily-task-migration origin/feat/daily-task-migration
-          python3 tool/apply_bujo_experiment.py
-          dart format lib/features/journal/presentation/rapid_log_input.dart lib/features/journal/presentation/today_screen.dart lib/features/journal/presentation/future_screen.dart lib/features/journal/presentation/collections_screen.dart lib/features/journal/presentation/monthly_screen.dart test/journal/rapid_log_input_test.dart
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/features/journal/presentation/rapid_log_input.dart lib/features/journal/presentation/today_screen.dart lib/features/journal/presentation/future_screen.dart lib/features/journal/presentation/collections_screen.dart lib/features/journal/presentation/monthly_screen.dart test/journal/rapid_log_input_test.dart
-          if ! git diff --cached --quiet; then
-            git commit -m "feat(journal): add rapid logging and monthly reflection"
-            git push origin HEAD:feat/daily-task-migration
-          fi
 
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
