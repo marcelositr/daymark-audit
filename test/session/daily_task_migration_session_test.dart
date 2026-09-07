@@ -4,6 +4,7 @@ import 'package:daymark/core/crypto/key_envelope.dart';
 import 'package:daymark/core/session/journal_files.dart';
 import 'package:daymark/core/session/journal_session.dart';
 import 'package:daymark/features/journal/data/daily_log_repository.dart';
+import 'package:daymark/features/journal/data/monthly_log_repository.dart';
 import 'package:daymark/features/journal/domain/journal_domain.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -118,6 +119,64 @@ void main() {
       );
     },
   );
+
+  test('Monthly Task can migrate into a Daily Log with lineage', () async {
+    final JournalSession session = await manager.create(
+      masterPassword: 'monthly to daily migration journal',
+    );
+    final MonthlyLogSnapshot monthly = await session.loadMonthlyLog(
+      '2026-09-01',
+    );
+    await session.captureMonthlyTask(
+      logId: monthly.logId,
+      content: 'Carry monthly task forward',
+    );
+
+    final String sourceEntryId = (await session.loadMonthlyLog('2026-09-01'))
+        .taskEntries
+        .single
+        .id;
+
+    await session.migrateTaskToDaily(
+      entryId: sourceEntryId,
+      methodDate: '2026-09-08',
+    );
+
+    final MonthlyLogSnapshot sourceAfter = await session.loadMonthlyLog(
+      '2026-09-01',
+    );
+    final DailyLogSnapshot destination = await session.loadDailyLog(
+      '2026-09-08',
+    );
+
+    expect(sourceAfter.taskEntries.single.id, sourceEntryId);
+    expect(
+      sourceAfter.taskEntries.single.taskState,
+      JournalTaskState.migrated,
+    );
+    expect(destination.entries, hasLength(1));
+    expect(destination.entries.single.id, isNot(sourceEntryId));
+    expect(destination.entries.single.content, 'Carry monthly task forward');
+    expect(destination.entries.single.taskState, JournalTaskState.open);
+
+    final migration = await session.database
+        .customSelect(
+          '''
+          SELECT destination_entry_id, kind
+          FROM migrations
+          WHERE source_entry_id = ?
+          ''',
+          variables: <Variable<Object>>[
+            Variable.withString(sourceEntryId),
+          ],
+        )
+        .getSingle();
+    expect(migration.read<String>('kind'), 'migrated');
+    expect(
+      migration.read<String>('destination_entry_id'),
+      destination.entries.single.id,
+    );
+  });
 
   test('invalid source does not create a destination Daily Log', () async {
     final JournalSession session = await manager.create(
