@@ -3,7 +3,7 @@ from pathlib import Path
 path = Path("test/session/daily_task_migration_session_test.dart")
 text = path.read_text()
 if "Monthly Calendar accepts a dated Task" not in text:
-    insertion = r'''
+    insertion = r"""
 
   test('Monthly Calendar accepts a dated Task', () async {
     final JournalSession session = await manager.create(
@@ -169,7 +169,7 @@ if "Monthly Calendar accepts a dated Task" not in text:
       },
     );
   });
-'''
+"""
     end = text.rfind('\n}')
     if end < 0:
         raise SystemExit('main test group closing brace not found')
