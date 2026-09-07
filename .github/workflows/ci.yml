@@ -41,6 +41,7 @@ jobs:
           python3 tool/apply_bujo_fidelity_core.py
           python3 tool/apply_bujo_fidelity_ui.py
           python3 tool/apply_bujo_fidelity_tests.py
+          python3 tool/apply_bujo_fidelity_integration.py
 
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
