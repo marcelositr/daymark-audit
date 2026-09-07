@@ -43,44 +43,22 @@ jobs:
           from pathlib import Path
 
           path = Path('/tmp/apply_polish_round.py')
-          lines = path.read_text().splitlines()
+          text = path.read_text()
 
-          start = next(
-              (
-                  index
-                  for index, line in enumerate(lines)
-                  if '"lib/presentation/app_shell.dart"' in line
-              ),
-              None,
-          )
-          end = next(
-              (
-                  index
-                  for index, line in enumerate(lines)
-                  if index > (start or 0)
-                  and line.startswith('# Localization parity')
-              ),
-              None,
-          )
+          # The transported payload has one corrupted triple-quote in the
+          # app-shell block. Remove that whole block and apply it directly
+          # after the rest of the payload succeeds.
+          start_marker = '# More menu: method structure first, then data, then app settings.'
+          end_marker = '# Localization parity and concise context-aware microcopy.'
+          start = text.find(start_marker)
+          end = text.find(end_marker)
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('app shell payload boundaries not found')
+          text = text[:start] + '# More menu applied directly by CI.\n\n' + text[end:]
 
-          if start is None or end is None:
-              raise SystemExit('app shell polish block not found')
-
-          quote_lines = [
-              index
-              for index in range(start, end)
-              if '"""' in lines[index]
-          ]
-
-          if len(quote_lines) == 3:
-              lines.insert(quote_lines[1], '    """,')
-          elif len(quote_lines) != 4:
-              raise SystemExit(
-                  f'unexpected app shell triple-quote count: {len(quote_lines)}'
-              )
-
-          text = '\n'.join(lines) + '\n'
-
+          # The access screen contains two `_errorMessage` fields. Anchor the
+          # state insertion to the confirmation controller so only the main
+          # access state is changed.
           old = '''replace_once(
               "lib/features/journal/presentation/journal_access_screen.dart",
               """  String? _errorMessage;
@@ -103,7 +81,6 @@ jobs:
             bool _confirmationVisible = false;
           """,
           )'''
-
           if old in text:
               text = text.replace(old, new, 1)
           elif new not in text:
@@ -113,6 +90,74 @@ jobs:
           PY
           python3 -m py_compile /tmp/apply_polish_round.py
           python3 /tmp/apply_polish_round.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/presentation/app_shell.dart')
+          text = path.read_text()
+          old = '''              ListTile(
+                leading: const Icon(Icons.search),
+                title: Text(l10n.search),
+                onTap: () => Navigator.of(sheetContext).pop(4),
+              ),
+              ListTile(
+                leading: const Icon(Icons.format_list_numbered),
+                title: Text(l10n.index),
+                onTap: () => Navigator.of(sheetContext).pop(5),
+              ),
+              ListTile(
+                leading: const Icon(Icons.backup_outlined),
+                title: Text(l10n.backup),
+                onTap: () => Navigator.of(sheetContext).pop(_backupAction),
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_download_outlined),
+                title: Text(l10n.openExport),
+                onTap: () => Navigator.of(sheetContext).pop(_exportAction),
+              ),
+              ListTile(
+                leading: const Icon(Icons.palette_outlined),
+                title: Text(l10n.appearance),
+                onTap: () => Navigator.of(sheetContext).pop(_appearanceAction),
+              ),
+'''
+          new = '''              ListTile(
+                leading: const Icon(Icons.format_list_numbered),
+                title: Text(l10n.index),
+                onTap: () => Navigator.of(sheetContext).pop(5),
+              ),
+              ListTile(
+                leading: const Icon(Icons.search),
+                title: Text(l10n.search),
+                onTap: () => Navigator.of(sheetContext).pop(4),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.backup_outlined),
+                title: Text(l10n.backup),
+                onTap: () => Navigator.of(sheetContext).pop(_backupAction),
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_download_outlined),
+                title: Text(l10n.openExport),
+                onTap: () => Navigator.of(sheetContext).pop(_exportAction),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.palette_outlined),
+                title: Text(l10n.appearance),
+                onTap: () => Navigator.of(sheetContext).pop(_appearanceAction),
+              ),
+'''
+          if new in text:
+              print('App shell polish already present.')
+          elif text.count(old) == 1:
+              path.write_text(text.replace(old, new, 1))
+              print('App shell polish applied directly.')
+          else:
+              raise SystemExit(f'app shell direct replacement count: {text.count(old)}')
+          PY
 
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
