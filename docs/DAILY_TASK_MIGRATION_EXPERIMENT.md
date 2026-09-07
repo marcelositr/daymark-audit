@@ -18,7 +18,7 @@ The app must reduce mechanical retyping without removing the intentional decisio
 
 ## Rapid Logging
 
-Generic Task/Event/Note composers in **Today**, **Future**, and **Collections** accept the familiar Bullet Journal signifiers directly in the text field:
+Generic Task/Event/Note composers in **Today**, **Future**, and **Collections** accept the familiar Bullet Journal Bullets directly in the text field:
 
 - `•` creates a Task;
 - `○` creates an Event;
@@ -48,17 +48,33 @@ Monthly reflection is available only for the current writable month. Historical 
 
 ## Task migration
 
-For an open Task in **Today** or the current **Monthly Tasks** section, **Migrate** offers three deliberate destinations:
+For an open Task in **Today**, **Migrate** offers three deliberate destinations:
 
 1. **Next day** — migrate to the Daily Log immediately following the current method date.
 2. **Date** — migrate to an explicitly selected future Daily Log date.
 3. **Collection** — preserve the existing migration-to-Collection behavior.
 
-For Monthly Tasks, the Daily destination is anchored to the current method date, not to the first day of the Monthly Log.
+For an open Task in the current **Monthly Tasks** section, the same choices are available plus **Next month**, which creates or reuses the next Monthly Log and places a fresh open Task in its Tasks section. The source remains in the current month with `>` state and lineage.
+
+For Monthly Tasks, a Daily destination is anchored to the current method date, not to the first day of the Monthly Log.
 
 **Schedule** remains separate and continues to target a Future Log month.
 
 No unresolved Task is rolled forward automatically. The user must choose Migrate and choose the destination.
+
+## Future arrival review
+
+When a Future Log month becomes the current month, Daymark exposes a quiet review link only if that arrived Future bucket still contains open Tasks.
+
+The arrived Future month is no longer treated as ordinary read-only history for those open Tasks. Each open Task can be deliberately:
+
+- migrated into the matching current Monthly Tasks list;
+- completed;
+- discarded.
+
+A Future Task migrated into Monthly keeps its Future source with `>` state, creates a fresh open Monthly Task, and records another lineage edge. If the Future Task originally came from scheduling, the journal therefore preserves the full chain: chronological source → Future destination → Monthly destination.
+
+Future Events and Notes remain read-only in this experiment. Moving an Event into the Monthly Calendar would require an explicit day that the month-addressed Future entry does not contain, while Notes do not belong to either canonical Monthly section. The experiment does not invent those semantics.
 
 ## Migration semantics
 
@@ -74,7 +90,9 @@ The operation:
 - does not move an Entry in place;
 - does not change the meaning of scheduling (`<`).
 
-The destination date must be later than the current method date in the experimental UI.
+The destination date must be later than the current method date in the experimental UI. The session layer also rejects same-day or backward Daily-to-Daily migration, so the forward-only rule is not dependent on UI validation.
+
+Monthly-to-Monthly migration must target a later Monthly Log. Future-to-Monthly arrival migration must target the Monthly Log for the same month as the Future source.
 
 ## Persistence impact
 
@@ -93,6 +111,10 @@ Before this experiment can be considered for the main Daymark repository, eviden
 - ambiguous text such as negative numbers is not accidentally reclassified;
 - Today reflection continues to expose only unresolved Tasks for deliberate decisions;
 - current Monthly Tasks can enter and leave reflection without affecting Calendar, Tracker, or historical Monthly views;
+- Monthly Tasks can deliberately migrate into the next Monthly Tasks list while preserving source history and lineage;
+- an arrived Future Task can deliberately migrate into the matching current Monthly Tasks list;
+- a scheduled Task can preserve a two-edge lineage chain from original source through Future into Monthly;
+- same-day and backward Daily-to-Daily migration is rejected before a destination is created;
 - resolving a Monthly Task removes it from the active reflection list after refresh;
 - Today Task migration preserves source history and creates a distinct open Daily destination Task;
 - Monthly Task migration preserves the Monthly source with `migrated` state and creates a distinct open Daily destination Task;

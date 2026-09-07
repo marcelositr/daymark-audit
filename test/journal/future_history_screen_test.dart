@@ -39,6 +39,12 @@ final class _FutureHistoryDataSource implements FutureHistoryDataSource {
   String? requestedPeriod;
 
   @override
+  Future<void> completeTask({required String entryId}) async {}
+
+  @override
+  Future<void> discardTask({required String entryId}) async {}
+
+  @override
   Future<FutureLogSnapshot?> find(String periodStart) async {
     requestedPeriod = periodStart;
     return FutureLogSnapshot(

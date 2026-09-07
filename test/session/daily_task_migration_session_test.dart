@@ -4,6 +4,7 @@ import 'package:daymark/core/crypto/key_envelope.dart';
 import 'package:daymark/core/session/journal_files.dart';
 import 'package:daymark/core/session/journal_session.dart';
 import 'package:daymark/features/journal/data/daily_log_repository.dart';
+import 'package:daymark/features/journal/data/future_log_repository.dart';
 import 'package:daymark/features/journal/data/monthly_log_repository.dart';
 import 'package:daymark/features/journal/domain/journal_domain.dart';
 import 'package:drift/drift.dart';
@@ -154,6 +155,140 @@ void main() {
     expect(
       migration.read<String>('destination_entry_id'),
       destination.entries.single.id,
+    );
+  });
+
+  test(
+    'Daily Task migration rejects same-day and backward destinations',
+    () async {
+      final JournalSession session = await manager.create(
+        masterPassword: 'forward daily migration journal',
+      );
+      final DailyLogSnapshot source = await session.loadDailyLog('2026-09-07');
+      await session.captureDailyLogEntry(
+        logId: source.logId,
+        type: JournalEntryType.task,
+        content: 'Only move forward',
+      );
+      final String entryId = (await session.loadDailyLog('2026-09-07'))
+          .entries
+          .single
+          .id;
+
+      await expectLater(
+        session.migrateTaskToDaily(entryId: entryId, methodDate: '2026-09-07'),
+        throwsA(isA<JournalInvariantException>()),
+      );
+      await expectLater(
+        session.migrateTaskToDaily(entryId: entryId, methodDate: '2026-09-06'),
+        throwsA(isA<JournalInvariantException>()),
+      );
+
+      expect(
+        (await session.loadDailyLog('2026-09-07')).entries.single.taskState,
+        JournalTaskState.open,
+      );
+      final earlierDestinationCount = await session.database.customSelect('''
+          SELECT COUNT(*) AS count
+          FROM logs
+          WHERE kind = 'daily' AND period_start = '2026-09-06'
+          ''').getSingle();
+      expect(earlierDestinationCount.read<int>('count'), 0);
+    },
+  );
+
+  test('Monthly Task can migrate into the next Monthly Tasks list', () async {
+    final JournalSession session = await manager.create(
+      masterPassword: 'monthly carry journal',
+    );
+    final MonthlyLogSnapshot september = await session.loadMonthlyLog(
+      '2026-09-01',
+    );
+    await session.captureMonthlyTask(
+      logId: september.logId,
+      content: 'Carry into October',
+    );
+    final String sourceEntryId = (await session.loadMonthlyLog('2026-09-01'))
+        .taskEntries
+        .single
+        .id;
+
+    await session.migrateTaskToMonthlyTasks(
+      entryId: sourceEntryId,
+      periodStart: '2026-10-01',
+    );
+
+    final MonthlyLogSnapshot sourceAfter = await session.loadMonthlyLog(
+      '2026-09-01',
+    );
+    final MonthlyLogSnapshot destination = await session.loadMonthlyLog(
+      '2026-10-01',
+    );
+    expect(sourceAfter.taskEntries.single.taskState, JournalTaskState.migrated);
+    expect(destination.taskEntries.single.id, isNot(sourceEntryId));
+    expect(destination.taskEntries.single.content, 'Carry into October');
+    expect(destination.taskEntries.single.taskState, JournalTaskState.open);
+  });
+
+  test('arrived Future Task migrates into matching Monthly Tasks with lineage chain', () async {
+    final JournalSession session = await manager.create(
+      masterPassword: 'future arrival journal',
+    );
+    final DailyLogSnapshot daily = await session.loadDailyLog('2026-09-07');
+    await session.captureDailyLogEntry(
+      logId: daily.logId,
+      type: JournalEntryType.task,
+      content: 'Renew October permit',
+    );
+    final String originalEntryId = (await session.loadDailyLog('2026-09-07'))
+        .entries
+        .single
+        .id;
+
+    await session.scheduleTaskToFuture(
+      entryId: originalEntryId,
+      periodStart: '2026-10-01',
+    );
+    final FutureLogSnapshot future = await session.loadFutureLog('2026-10-01');
+    final String futureEntryId = future.entries.single.id;
+
+    await session.migrateTaskToMonthlyTasks(
+      entryId: futureEntryId,
+      periodStart: '2026-10-01',
+    );
+
+    final DailyLogSnapshot originalAfter = await session.loadDailyLog(
+      '2026-09-07',
+    );
+    final FutureLogSnapshot futureAfter = await session.loadFutureLog(
+      '2026-10-01',
+    );
+    final MonthlyLogSnapshot monthlyAfter = await session.loadMonthlyLog(
+      '2026-10-01',
+    );
+    expect(originalAfter.entries.single.taskState, JournalTaskState.scheduled);
+    expect(futureAfter.entries.single.taskState, JournalTaskState.migrated);
+    expect(monthlyAfter.taskEntries.single.content, 'Renew October permit');
+    expect(monthlyAfter.taskEntries.single.taskState, JournalTaskState.open);
+
+    final migrations = await session.database.customSelect('''
+          SELECT source_entry_id, destination_entry_id, kind
+          FROM migrations
+          ORDER BY created_at, source_entry_id
+          ''').get();
+    expect(migrations, hasLength(2));
+    final scheduled = migrations.singleWhere(
+      (row) => row.read<String>('source_entry_id') == originalEntryId,
+    );
+    final migrated = migrations.singleWhere(
+      (row) => row.read<String>('source_entry_id') == futureEntryId,
+    );
+    expect(scheduled.read<String>('kind'), 'scheduled');
+    expect(scheduled.read<String>('destination_entry_id'), futureEntryId);
+    expect(migrated.read<String>('kind'), 'migrated');
+    expect(
+      migrated.read<String>('destination_entry_id'),
+      monthlyAfter.taskEntries.single.id,
     );
   });
 

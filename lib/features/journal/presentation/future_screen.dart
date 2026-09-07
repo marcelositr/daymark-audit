@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:daymark/core/session/journal_future_history_session.dart';
 import 'package:daymark/core/session/journal_session.dart';
 import 'package:daymark/core/session/journal_session_controller.dart';
 import 'package:daymark/features/journal/data/future_log_repository.dart';
@@ -13,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
@@ -22,6 +24,8 @@ import 'rapid_log_input.dart';
 
 abstract interface class FutureJournalDataSource {
   Future<FutureLogSnapshot> load(String periodStart);
+
+  Future<FutureLogSnapshot?> find(String periodStart);
 
   Future<void> capture({
     required String logId,
@@ -53,6 +57,11 @@ final class _SessionFutureJournalDataSource implements FutureJournalDataSource {
   @override
   Future<FutureLogSnapshot> load(String periodStart) {
     return _session.loadFutureLog(periodStart);
+  }
+
+  @override
+  Future<FutureLogSnapshot?> find(String periodStart) {
+    return _session.findFutureLog(periodStart);
   }
 
   @override
@@ -99,6 +108,7 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
   late List<DateTime> _months;
   late DateTime _selectedMonth;
   late Future<List<FutureLogSnapshot>> _snapshotsFuture;
+  late Future<FutureLogSnapshot?> _arrivedSnapshotFuture;
   Timer? _horizonRolloverTimer;
   JournalEntryType _entryType = JournalEntryType.task;
   bool _saving = false;
@@ -115,6 +125,7 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
     _months = _futureMonths(_anchorMonth);
     _selectedMonth = _months.first;
     _snapshotsFuture = _loadSnapshots();
+    _arrivedSnapshotFuture = _loadArrivedSnapshot();
     _scheduleHorizonRollover();
   }
 
@@ -134,6 +145,7 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
         isFutureSectionActive &&
         !_wasFutureSectionActive) {
       _snapshotsFuture = _loadSnapshots();
+      _arrivedSnapshotFuture = _loadArrivedSnapshot();
       _restoreComposerFocus();
     }
     _sectionScopeInitialized = true;
@@ -178,6 +190,35 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
                 icon: const Icon(Icons.lock_outline),
               ),
             ],
+          ),
+          FutureBuilder<FutureLogSnapshot?>(
+            future: _arrivedSnapshotFuture,
+            builder: (context, snapshot) {
+              final FutureLogSnapshot? arrived = snapshot.data;
+              final bool hasOpenTasks =
+                  arrived?.entries.any(
+                    (entry) =>
+                        entry.type == JournalEntryType.task &&
+                        entry.taskState == JournalTaskState.open,
+                  ) ??
+                  false;
+              if (!hasOpenTasks) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    key: const ValueKey<String>('review-arrived-future'),
+                    onPressed: () =>
+                        context.go('/future/${arrived!.periodStart}'),
+                    icon: const Icon(Icons.fact_check_outlined),
+                    label: Text(l10n.reviewCurrentFutureLog),
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -479,6 +520,10 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
     ]);
   }
 
+  Future<FutureLogSnapshot?> _loadArrivedSnapshot() {
+    return _dataSource().find(formatFuturePeriodStart(_anchorMonth));
+  }
+
   Future<void> _capture() async {
     final RapidLogInput rapidLog = parseRapidLogInput(
       _entryController.text,
@@ -658,6 +703,9 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
     final DateTime now = DateTime.now();
     final DateTime currentMonth = DateTime(now.year, now.month);
     if (currentMonth == _anchorMonth) {
+      setState(() {
+        _arrivedSnapshotFuture = _loadArrivedSnapshot();
+      });
       _scheduleHorizonRollover();
       return;
     }
@@ -675,6 +723,7 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
           ? months[selectedIndex]
           : months.first;
       _snapshotsFuture = _loadSnapshots();
+      _arrivedSnapshotFuture = _loadArrivedSnapshot();
     });
     _scheduleHorizonRollover();
     _restoreComposerFocus();

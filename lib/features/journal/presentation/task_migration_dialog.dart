@@ -1,6 +1,7 @@
 import 'package:daymark/core/session/journal_session.dart';
 import 'package:daymark/core/session/journal_session_controller.dart';
 import 'package:daymark/features/journal/data/daily_log_repository.dart';
+import 'package:daymark/features/journal/data/monthly_log_repository.dart';
 import 'package:daymark/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,10 +46,50 @@ final class _SessionDailyTaskMigrationDataSource
   }
 }
 
-enum TaskMigrationDestination { nextDay, date, collection }
+abstract interface class MonthlyTaskMigrationDataSource {
+  Future<void> migrateTask({
+    required String entryId,
+    required String periodStart,
+  });
+}
+
+final Provider<MonthlyTaskMigrationDataSource>
+monthlyTaskMigrationDataSourceProvider =
+    Provider<MonthlyTaskMigrationDataSource>((ref) {
+      final JournalAccessState access = ref
+          .watch(journalSessionControllerProvider)
+          .requireValue;
+      if (access case JournalUnlocked(:final session)) {
+        return _SessionMonthlyTaskMigrationDataSource(session);
+      }
+      throw StateError(
+        'Monthly Task migration requires an unlocked journal session.',
+      );
+    });
+
+final class _SessionMonthlyTaskMigrationDataSource
+    implements MonthlyTaskMigrationDataSource {
+  const _SessionMonthlyTaskMigrationDataSource(this._session);
+
+  final JournalSession _session;
+
+  @override
+  Future<void> migrateTask({
+    required String entryId,
+    required String periodStart,
+  }) {
+    return _session.migrateTaskToMonthlyTasks(
+      entryId: entryId,
+      periodStart: periodStart,
+    );
+  }
+}
+
+enum TaskMigrationDestination { nextDay, date, nextMonth, collection }
 
 Future<TaskMigrationDestination?> showTaskMigrationDestinationDialog({
   required BuildContext context,
+  bool includeNextMonth = false,
 }) {
   final AppLocalizations l10n = AppLocalizations.of(context);
   final MaterialLocalizations material = MaterialLocalizations.of(context);
@@ -72,6 +113,15 @@ Future<TaskMigrationDestination?> showTaskMigrationDestinationDialog({
           },
           child: Text(material.datePickerHelpText),
         ),
+        if (includeNextMonth)
+          SimpleDialogOption(
+            key: const ValueKey<String>('migrate-next-month'),
+            onPressed: () {
+              Navigator.of(dialogContext)
+                  .pop(TaskMigrationDestination.nextMonth);
+            },
+            child: Text(l10n.nextMonth),
+          ),
         SimpleDialogOption(
           key: const ValueKey<String>('migrate-collection'),
           onPressed: () {
@@ -88,6 +138,10 @@ Future<TaskMigrationDestination?> showTaskMigrationDestinationDialog({
 String nextTaskMigrationMethodDate(DateTime anchor) {
   final DateTime dateOnly = DateTime(anchor.year, anchor.month, anchor.day);
   return formatJournalMethodDate(dateOnly.add(const Duration(days: 1)));
+}
+
+String nextTaskMigrationMonthStart(DateTime anchor) {
+  return formatJournalMonthStart(DateTime(anchor.year, anchor.month + 1));
 }
 
 Future<String?> showTaskDailyMigrationDatePicker({

@@ -16,6 +16,7 @@ import 'package:daymark/features/journal/data/journal_repository.dart';
 import 'package:daymark/features/journal/data/monthly_log_repository.dart';
 import 'package:daymark/features/journal/data/task_action_repository.dart';
 import 'package:daymark/features/journal/domain/journal_domain.dart';
+import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import 'journal_files.dart';
@@ -208,13 +209,42 @@ final class JournalSession {
     required String methodDate,
   }) {
     return run(() async {
+      validateJournalMethodDate(methodDate);
       await taskActions.requireOpen(entryId: entryId);
+      await _requireForwardDailyDestination(
+        entryId: entryId,
+        methodDate: methodDate,
+      );
       final DailyLogSnapshot destination = await dailyLog.loadOrCreate(
         methodDate,
       );
       await service.migrate(
         sourceEntryId: entryId,
         destinationOwner: JournalLogOwner(logId: destination.logId),
+      );
+    });
+  }
+
+  Future<void> migrateTaskToMonthlyTasks({
+    required String entryId,
+    required String periodStart,
+  }) {
+    return run(() async {
+      validateJournalMonthStart(periodStart);
+      await taskActions.requireOpen(entryId: entryId);
+      await _requireMonthlyTaskDestination(
+        entryId: entryId,
+        periodStart: periodStart,
+      );
+      final MonthlyLogSnapshot destination = await monthlyLog.loadOrCreate(
+        periodStart,
+      );
+      await service.migrate(
+        sourceEntryId: entryId,
+        destinationOwner: JournalLogOwner(
+          logId: destination.logId,
+          monthlySection: JournalMonthlySection.tasks,
+        ),
       );
     });
   }
@@ -254,6 +284,78 @@ final class JournalSession {
 
   Future<void> discardTask({required String entryId}) {
     return run(() => taskActions.discard(entryId: entryId));
+  }
+
+  Future<void> _requireForwardDailyDestination({
+    required String entryId,
+    required String methodDate,
+  }) async {
+    final row = await database
+        .customSelect(
+          '''
+          SELECT l.kind, l.period_start
+          FROM entry_placements p
+          LEFT JOIN logs l ON l.id = p.log_id
+          WHERE p.entry_id = ?
+          ''',
+          variables: <Variable<Object>>[Variable.withString(entryId)],
+        )
+        .getSingleOrNull();
+    if (row == null) {
+      throw JournalNotFoundException('Entry placement', entryId);
+    }
+
+    final String? sourceKind = row.readNullable<String>('kind');
+    final String? sourcePeriod = row.readNullable<String>('period_start');
+    if (sourceKind == JournalLogKind.daily.code &&
+        sourcePeriod != null &&
+        methodDate.compareTo(sourcePeriod) <= 0) {
+      throw const JournalInvariantException(
+        'Daily Task migration must move to a later Daily Log.',
+      );
+    }
+  }
+
+  Future<void> _requireMonthlyTaskDestination({
+    required String entryId,
+    required String periodStart,
+  }) async {
+    final row = await database
+        .customSelect(
+          '''
+          SELECT l.kind, l.period_start
+          FROM entry_placements p
+          LEFT JOIN logs l ON l.id = p.log_id
+          WHERE p.entry_id = ?
+          ''',
+          variables: <Variable<Object>>[Variable.withString(entryId)],
+        )
+        .getSingleOrNull();
+    if (row == null) {
+      throw JournalNotFoundException('Entry placement', entryId);
+    }
+
+    final String? sourceKind = row.readNullable<String>('kind');
+    final String? sourcePeriod = row.readNullable<String>('period_start');
+    if (sourceKind == JournalLogKind.monthly.code) {
+      if (sourcePeriod == null || periodStart.compareTo(sourcePeriod) <= 0) {
+        throw const JournalInvariantException(
+          'Monthly Task migration must move to a later Monthly Log.',
+        );
+      }
+      return;
+    }
+    if (sourceKind == JournalLogKind.future.code) {
+      if (sourcePeriod != periodStart) {
+        throw const JournalInvariantException(
+          'An arrived Future Task can migrate only to the matching Monthly Log.',
+        );
+      }
+      return;
+    }
+    throw const JournalInvariantException(
+      'Monthly Task migration requires a Monthly or Future source.',
+    );
   }
 
   Future<void> close() async {

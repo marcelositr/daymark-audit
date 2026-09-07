@@ -1007,10 +1007,14 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     final DateTime actionMonth = _month;
     final DateTime actionDate = _dateOnly(_now());
     String? migrationMethodDate;
+    String? migrationMonthStart;
     String? migrationCollectionId;
     if (action == _MonthlyEntryAction.migrate) {
       final TaskMigrationDestination? destination =
-          await showTaskMigrationDestinationDialog(context: context);
+          await showTaskMigrationDestinationDialog(
+            context: context,
+            includeNextMonth: true,
+          );
       if (!mounted || destination == null) {
         return;
       }
@@ -1027,6 +1031,9 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
           if (!mounted || migrationMethodDate == null) {
             return;
           }
+          break;
+        case TaskMigrationDestination.nextMonth:
+          migrationMonthStart = nextTaskMigrationMonthStart(actionMonth);
           break;
         case TaskMigrationDestination.collection:
           migrationCollectionId = await showTaskCollectionMigrationDialog(
@@ -1079,6 +1086,13 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                 .migrateTask(
                   entryId: entry.id,
                   methodDate: migrationMethodDate,
+                );
+          } else if (migrationMonthStart != null) {
+            await ref
+                .read(monthlyTaskMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  periodStart: migrationMonthStart,
                 );
           } else {
             await ref

@@ -733,6 +733,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
             return;
           }
           break;
+        case TaskMigrationDestination.nextMonth:
+          return;
         case TaskMigrationDestination.collection:
           migrationCollectionId = await showTaskCollectionMigrationDialog(
             context: context,

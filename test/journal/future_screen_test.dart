@@ -262,6 +262,9 @@ final class _MemoryFutureJournal implements FutureJournalDataSource {
   }
 
   @override
+  Future<FutureLogSnapshot?> find(String periodStart) async => null;
+
+  @override
   Future<void> capture({
     required String logId,
     required JournalEntryType type,
