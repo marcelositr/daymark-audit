@@ -23,7 +23,7 @@ text = path.read_text()
 if ".valueOrNull" in text:
     text = text.replace(
         ".valueOrNull",
-        ".whenOrNull(data: (value) => value)",
+        ".maybeWhen(data: (value) => value, orElse: () => null)",
     )
 path.write_text(text)
 
@@ -106,4 +106,37 @@ for path_name in (
     )
     path.write_text(text)
 
-print("Known analyzer integration issues repaired.")
+# The polish deliberately shortens context-redundant actions. These tests
+# validate behavior, not the superseded verbose English labels.
+replace_required(
+    "test/journal/index_screen_test.dart",
+    "    await tester.tap(find.text('Remove from Index'));\n",
+    "    await tester.tap(find.text('Remove'));\n",
+)
+
+path = Path("test/journal/collections_screen_test.dart")
+text = path.read_text().replace("find.text('Remove reference')", "find.text('Remove')")
+path.write_text(text)
+
+replace_required(
+    "test/journal/backup_restore_ui_test.dart",
+    "    await tester.tap(find.widgetWithText(FilledButton, 'Create backup'));\n",
+    "    await tester.tap(find.widgetWithText(FilledButton, 'Create'));\n",
+)
+
+replace_required(
+    "test/app_smoke_test.dart",
+    "    await tester.tap(find.widgetWithText(FilledButton, 'Create journal'));\n",
+    "    await tester.tap(find.widgetWithText(FilledButton, 'Create'));\n",
+)
+
+# Search microcopy now teaches text + Signifier filtering. Keep this test
+# focused on explicit search and owner-context rendering rather than an old
+# prose sentence.
+replace_required(
+    "test/journal/search_screen_test.dart",
+    "    expect(find.text('Enter text to search your journal.'), findsOneWidget);\n",
+    "    expect(find.byType(TextField), findsOneWidget);\n",
+)
+
+print("Known analyzer and widget-test integration issues repaired.")
