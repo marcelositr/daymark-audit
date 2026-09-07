@@ -77,8 +77,8 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
             children: [
               IconButton(
                 onPressed: _backToToday,
-                tooltip: material.backButtonTooltip,
-                icon: const Icon(Icons.arrow_back),
+                tooltip: l10n.today,
+                icon: const Icon(Icons.today_outlined),
               ),
               IconButton(
                 onPressed: _previousDay,
@@ -86,10 +86,18 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
                 icon: const Icon(Icons.chevron_left),
               ),
               Expanded(
-                child: Text(
-                  material.formatFullDate(_viewedDate),
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall,
+                child: TextButton(
+                  onPressed: _chooseDate,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    alignment: Alignment.center,
+                  ),
+                  child: Text(
+                    material.formatFullDate(_viewedDate),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                 ),
               ),
               IconButton(
@@ -154,8 +162,9 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
                   _entrySymbol(entry),
                   textAlign: TextAlign.center,
                   style: discarded
-                      ? Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(decoration: TextDecoration.lineThrough)
+                      ? Theme.of(context).textTheme.titleMedium?.copyWith(
+                          decoration: TextDecoration.lineThrough,
+                        )
                       : Theme.of(context).textTheme.titleMedium,
                 ),
               ),
@@ -187,9 +196,7 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
     );
   }
 
-  bool get _canGoNext {
-    return _dateOnly(_viewedDate.add(const Duration(days: 1))).isBefore(_today);
-  }
+  bool get _canGoNext => _viewedDate.isBefore(_today);
 
   Future<DailyLogSnapshot?> _loadSnapshot() {
     return _dataSource().find(formatJournalMethodDate(_viewedDate));
@@ -206,8 +213,41 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
     if (!_canGoNext) {
       return;
     }
+    final DateTime target = _dateOnly(
+      _viewedDate.add(const Duration(days: 1)),
+    );
+    if (target == _today) {
+      _backToToday();
+      return;
+    }
     setState(() {
-      _viewedDate = _dateOnly(_viewedDate.add(const Duration(days: 1)));
+      _viewedDate = target;
+      _snapshotFuture = _loadSnapshot();
+    });
+  }
+
+  Future<void> _chooseDate() async {
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: _viewedDate,
+      firstDate: DateTime(1900),
+      lastDate: _today,
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDatePickerMode: DatePickerMode.day,
+    );
+    if (!mounted || selected == null) {
+      return;
+    }
+    final DateTime target = _dateOnly(selected);
+    if (target == _today) {
+      _backToToday();
+      return;
+    }
+    if (target == _viewedDate) {
+      return;
+    }
+    setState(() {
+      _viewedDate = target;
       _snapshotFuture = _loadSnapshot();
     });
   }

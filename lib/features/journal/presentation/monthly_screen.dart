@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
@@ -229,6 +230,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final bool busy = _saving || _trackerSaving || _entryActionId != null;
+    final MaterialLocalizations material = MaterialLocalizations.of(context);
 
     return DaymarkPageFrame(
       child: Column(
@@ -242,9 +244,18 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                 icon: const Icon(Icons.chevron_left),
               ),
               Expanded(
-                child: Text(
-                  MaterialLocalizations.of(context).formatMonthYear(_month),
-                  style: Theme.of(context).textTheme.headlineSmall,
+                child: TextButton(
+                  onPressed: busy ? null : _chooseMonth,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    alignment: Alignment.center,
+                  ),
+                  child: Text(
+                    material.formatMonthYear(_month),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                 ),
               ),
               IconButton(
@@ -254,6 +265,12 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                 tooltip: l10n.nextMonth,
                 icon: const Icon(Icons.chevron_right),
               ),
+              if (!_followingCurrentMonth)
+                IconButton(
+                  onPressed: busy ? null : _goToCurrentMonth,
+                  tooltip: l10n.today,
+                  icon: const Icon(Icons.today_outlined),
+                ),
               if (_followingCurrentMonth &&
                   _section == _MonthlyViewSection.tasks)
                 IconButton(
@@ -424,6 +441,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     final int dayCount = _daysInMonth(_month);
     final List<MonthlyLogEntry> calendarEntries =
         snapshot?.calendarEntries ?? const <MonthlyLogEntry>[];
+    final DateTime today = _dateOnly(_now());
 
     return ListView.builder(
       itemCount: dayCount,
@@ -436,6 +454,11 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             if (entry.calendarDate == methodDate) entry,
         ];
         final String weekday = material.narrowWeekdays[date.weekday % 7];
+        final bool canOpenDaily = !date.isAfter(today);
+        final Widget dayLabel = Text(
+          '$dayNumber $weekday',
+          style: Theme.of(context).textTheme.bodyMedium,
+        );
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -444,10 +467,16 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             children: [
               SizedBox(
                 width: 52,
-                child: Text(
-                  '$dayNumber $weekday',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                child: canOpenDaily
+                    ? InkWell(
+                        onTap: () => _openDailyForDate(date),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: dayLabel,
+                        ),
+                      )
+                    : dayLabel,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -490,8 +519,9 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             _monthlyCalendarEntrySymbol(entry),
             textAlign: TextAlign.center,
             style: entry.taskState == JournalTaskState.discarded
-                ? Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(decoration: TextDecoration.lineThrough)
+                ? Theme.of(context).textTheme.titleMedium?.copyWith(
+                    decoration: TextDecoration.lineThrough,
+                  )
                 : Theme.of(context).textTheme.titleMedium,
           );
     final Widget row = Row(
@@ -846,11 +876,40 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     return _trackerDataSource().loadMonth(formatJournalMonthStart(month));
   }
 
-  Future<void> _selectMonth(int offset) async {
+  Future<void> _selectMonth(int offset) {
+    return _moveToMonth(DateTime(_month.year, _month.month + offset));
+  }
+
+  Future<void> _chooseMonth() async {
     if (_saving || _trackerSaving || _entryActionId != null) {
       return;
     }
-    final DateTime target = DateTime(_month.year, _month.month + offset);
+    final DateTime today = _dateOnly(_now());
+    final DateTime initialDate = _sameMonth(_month, _currentMonth())
+        ? today
+        : DateTime(_month.year, _month.month, 1);
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1900),
+      lastDate: today,
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDatePickerMode: DatePickerMode.year,
+    );
+    if (!mounted || selected == null) {
+      return;
+    }
+    await _moveToMonth(DateTime(selected.year, selected.month));
+  }
+
+  Future<void> _goToCurrentMonth() {
+    return _moveToMonth(_currentMonth());
+  }
+
+  Future<void> _moveToMonth(DateTime target) async {
+    if (_saving || _trackerSaving || _entryActionId != null) {
+      return;
+    }
     final DateTime currentMonth = _currentMonth();
     if (_isAfterMonth(target, currentMonth)) {
       return;
@@ -875,6 +934,19 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     if (followingCurrentMonth) {
       _restoreComposerFocus();
     }
+  }
+
+  void _openDailyForDate(DateTime date) {
+    final DateTime target = _dateOnly(date);
+    final DateTime today = _dateOnly(_now());
+    if (target.isAfter(today)) {
+      return;
+    }
+    if (target == today) {
+      context.go('/');
+      return;
+    }
+    context.go('/daily/${_formatMethodDate(target)}');
   }
 
   Future<void> _capture() async {
