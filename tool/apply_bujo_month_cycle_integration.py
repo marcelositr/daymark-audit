@@ -45,22 +45,45 @@ replace_once(
 """,
 )
 
-for path in (
+replace_once(
     "test/journal/entry_collection_reference_screen_test.dart",
-    "test/journal/future_screen_test.dart",
-):
-    replace_once(
-        path,
-        """  @override
+    """  @override
+  Future<FutureLogSnapshot> load(String periodStart) async => FutureLogSnapshot(
+    logId: 'future-$periodStart',
+    periodStart: periodStart,
+    entries: periodStart == '2026-10-01' ? [entry] : const [],
+  );
+
+  @override
   Future<void> capture({
 """,
-        """  @override
+    """  @override
+  Future<FutureLogSnapshot> load(String periodStart) async => FutureLogSnapshot(
+    logId: 'future-$periodStart',
+    periodStart: periodStart,
+    entries: periodStart == '2026-10-01' ? [entry] : const [],
+  );
+
+  @override
   Future<FutureLogSnapshot?> find(String periodStart) async => null;
 
   @override
   Future<void> capture({
 """,
-    )
+)
+
+replace_once(
+    "test/journal/future_screen_test.dart",
+    """  @override
+  Future<void> capture({
+""",
+    """  @override
+  Future<FutureLogSnapshot?> find(String periodStart) async => null;
+
+  @override
+  Future<void> capture({
+""",
+)
 
 replace_once(
     "test/journal/future_history_screen_test.dart",
