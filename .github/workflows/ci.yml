@@ -39,6 +39,20 @@ jobs:
       - name: Apply final interaction polish
         run: |
           cat tool/polish_round.b64.* | tr -d '\n' | base64 -d > /tmp/apply_polish_round.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/apply_polish_round.py')
+          lines = path.read_text().splitlines()
+          cut = next(
+              (index for index, line in enumerate(lines) if index >= 1300 and line.startswith('append_once(')),
+              None,
+          )
+          if cut is None:
+              raise SystemExit('polish payload documentation boundary not found')
+          path.write_text('\n'.join(lines[:cut]) + '\n')
+          PY
+          python3 -m py_compile /tmp/apply_polish_round.py
           python3 /tmp/apply_polish_round.py
 
       - name: Resolve locked dependencies
@@ -72,6 +86,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs lib test
+          git add lib test
           git commit -m 'feat(ux): polish deliberate journal interactions'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
