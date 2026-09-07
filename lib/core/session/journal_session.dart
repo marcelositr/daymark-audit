@@ -203,6 +203,20 @@ final class JournalSession {
     );
   }
 
+  Future<void> migrateTaskToDaily({
+    required String entryId,
+    required String methodDate,
+  }) {
+    return run(() async {
+      await taskActions.requireOpen(entryId: entryId);
+      final DailyLogSnapshot destination = await dailyLog.loadOrCreate(methodDate);
+      await service.migrate(
+        sourceEntryId: entryId,
+        destinationOwner: JournalLogOwner(logId: destination.logId),
+      );
+    });
+  }
+
   Future<void> migrateTaskToCollection({
     required String entryId,
     required String collectionId,
