@@ -18,6 +18,7 @@ import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
 import 'journal_activity_guard.dart';
+import 'rapid_log_input.dart';
 
 abstract interface class FutureJournalDataSource {
   Future<FutureLogSnapshot> load(String periodStart);
@@ -479,13 +480,15 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
   }
 
   Future<void> _capture() async {
-    final String content = _entryController.text.trim();
-    if (content.isEmpty || _saving) {
+    final RapidLogInput rapidLog = parseRapidLogInput(
+      _entryController.text,
+      fallbackType: _entryType,
+    );
+    if (rapidLog.content.isEmpty || _saving) {
       return;
     }
 
     final DateTime selectedMonth = _selectedMonth;
-    final JournalEntryType entryType = _entryType;
     final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() => _saving = true);
 
@@ -502,8 +505,8 @@ class _FutureScreenState extends ConsumerState<FutureScreen>
       };
       await dataSource.capture(
         logId: target.logId,
-        type: entryType,
-        content: content,
+        type: rapidLog.type,
+        content: rapidLog.content,
       );
       final List<FutureLogSnapshot> updatedSnapshots = await _loadSnapshots();
       final FutureLogSnapshot updatedTarget = updatedSnapshots.singleWhere(

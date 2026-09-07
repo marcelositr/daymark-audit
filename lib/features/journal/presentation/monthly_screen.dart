@@ -148,6 +148,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
   late _MonthlyViewSection _section;
   bool _saving = false;
   bool _trackerSaving = false;
+  bool _reflecting = false;
   String? _entryActionId;
   bool _sectionScopeInitialized = false;
   bool _wasMonthlySectionActive = false;
@@ -250,6 +251,17 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                 tooltip: l10n.nextMonth,
                 icon: const Icon(Icons.chevron_right),
               ),
+              if (_followingCurrentMonth &&
+                  _section == _MonthlyViewSection.tasks)
+                IconButton(
+                  onPressed: busy ? null : _toggleReflection,
+                  tooltip: _reflecting
+                      ? l10n.finishReflection
+                      : l10n.startReflection,
+                  icon: Icon(
+                    _reflecting ? Icons.fact_check : Icons.fact_check_outlined,
+                  ),
+                ),
               IconButton(
                 onPressed: _lock,
                 tooltip: l10n.lockJournal,
@@ -261,6 +273,13 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             const SizedBox(height: 4),
             Text(
               l10n.monthlyHistoryReadOnly,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (_reflecting) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.dailyReflectionPrompt,
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -288,7 +307,13 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                   ? null
                   : (selection) {
                       _entryController.clear();
-                      setState(() => _section = selection.single);
+                      final _MonthlyViewSection nextSection = selection.single;
+                      setState(() {
+                        _section = nextSection;
+                        if (nextSection != _MonthlyViewSection.tasks) {
+                          _reflecting = false;
+                        }
+                      });
                       if (_section == _MonthlyViewSection.tracker) {
                         _entryFocusNode.unfocus();
                       } else {
@@ -328,7 +353,8 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
           ),
           const DaymarkNoticeRegion(),
           if (_followingCurrentMonth &&
-              _section != _MonthlyViewSection.tracker) ...[
+              _section != _MonthlyViewSection.tracker &&
+              !_reflecting) ...[
             const SizedBox(height: 12),
             _buildComposer(l10n),
           ],
@@ -472,10 +498,23 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     AppLocalizations l10n,
     MonthlyLogSnapshot? snapshot,
   ) {
-    final List<MonthlyLogEntry> taskEntries =
+    final List<MonthlyLogEntry> allTaskEntries =
         snapshot?.taskEntries ?? const <MonthlyLogEntry>[];
+    final List<MonthlyLogEntry> taskEntries = _reflecting
+        ? <MonthlyLogEntry>[
+            for (final MonthlyLogEntry entry in allTaskEntries)
+              if (entry.type == JournalEntryType.task &&
+                  entry.taskState == JournalTaskState.open)
+                entry,
+          ]
+        : allTaskEntries;
     if (taskEntries.isEmpty) {
-      return DaymarkEmptyState(message: l10n.emptyMonthlyTasks, topPadding: 16);
+      return DaymarkEmptyState(
+        message: _reflecting
+            ? l10n.dailyReflectionEmpty
+            : l10n.emptyMonthlyTasks,
+        topPadding: 16,
+      );
     }
 
     return ListView.separated(
@@ -571,10 +610,11 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
               value: _MonthlyEntryAction.schedule,
               child: Text(l10n.scheduleTask),
             ),
-          PopupMenuItem(
-            value: _MonthlyEntryAction.reference,
-            child: Text(l10n.referenceEntry),
-          ),
+          if (!_reflecting)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.reference,
+              child: Text(l10n.referenceEntry),
+            ),
           if (openTask)
             PopupMenuItem(
               value: _MonthlyEntryAction.discard,
@@ -660,6 +700,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     if (defaultTargetPlatform != TargetPlatform.linux ||
         !_followingCurrentMonth ||
         _section == _MonthlyViewSection.tracker ||
+        _reflecting ||
         _saving ||
         _entryActionId != null) {
       return;
@@ -668,6 +709,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
       if (mounted &&
           _followingCurrentMonth &&
           _section != _MonthlyViewSection.tracker &&
+          !_reflecting &&
           !_saving &&
           _entryActionId == null) {
         _entryFocusNode.requestFocus();
@@ -715,6 +757,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     setState(() {
       _month = target;
       _followingCurrentMonth = followingCurrentMonth;
+      _reflecting = false;
       _selectedDay = followingCurrentMonth ? _clampDay(now.day, target) : 1;
       _snapshotFuture = _loadSnapshotFor(
         target,
@@ -732,6 +775,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     final String content = _entryController.text.trim();
     if (content.isEmpty ||
         _saving ||
+        _reflecting ||
         !_followingCurrentMonth ||
         _section == _MonthlyViewSection.tracker) {
       return;
@@ -950,6 +994,9 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     if (_entryActionId != null || !_followingCurrentMonth) {
       return;
     }
+    if (_reflecting && action == _MonthlyEntryAction.reference) {
+      return;
+    }
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
@@ -1088,6 +1135,24 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     }
   }
 
+  void _toggleReflection() {
+    if (_saving ||
+        _trackerSaving ||
+        _entryActionId != null ||
+        !_followingCurrentMonth ||
+        _section != _MonthlyViewSection.tasks) {
+      return;
+    }
+
+    final bool enteringReflection = !_reflecting;
+    setState(() => _reflecting = enteringReflection);
+    if (enteringReflection) {
+      _entryFocusNode.unfocus();
+      return;
+    }
+    _restoreComposerFocus();
+  }
+
   Future<void> _lock() async {
     try {
       await ref.read(journalSessionControllerProvider.notifier).lock();
@@ -1112,6 +1177,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
 
     setState(() {
       _month = currentMonth;
+      _reflecting = false;
       _selectedDay = _clampDay(now.day, _month);
       _snapshotFuture = _loadSnapshotFor(_month, writable: true);
       _trackerFuture = _loadTrackerMonth(_month);

@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'entry_capture_undo.dart';
 import 'entry_semantics.dart';
 import 'journal_activity_guard.dart';
+import 'rapid_log_input.dart';
 
 abstract interface class CollectionsJournalDataSource {
   Future<List<CollectionSummary>> list();
@@ -621,9 +622,12 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   }
 
   Future<void> _capture() async {
-    final String content = _entryController.text.trim();
+    final RapidLogInput rapidLog = parseRapidLogInput(
+      _entryController.text,
+      fallbackType: _entryType,
+    );
     final String? collectionId = _selectedCollectionId;
-    if (content.isEmpty || collectionId == null || _saving) return;
+    if (rapidLog.content.isEmpty || collectionId == null || _saving) return;
     final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() => _saving = true);
     try {
@@ -633,8 +637,8 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       };
       await _dataSource().capture(
         collectionId: collectionId,
-        type: _entryType,
-        content: content,
+        type: rapidLog.type,
+        content: rapidLog.content,
       );
       final CollectionSnapshot updatedSnapshot = await _dataSource().load(
         collectionId,

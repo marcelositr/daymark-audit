@@ -21,6 +21,7 @@ import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
 import 'journal_activity_guard.dart';
+import 'rapid_log_input.dart';
 import 'task_collection_migration_dialog.dart';
 import 'task_migration_dialog.dart';
 import 'task_schedule_dialog.dart';
@@ -588,8 +589,11 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
   }
 
   Future<void> _capture() async {
-    final String content = _entryController.text.trim();
-    if (content.isEmpty || _saving) {
+    final RapidLogInput rapidLog = parseRapidLogInput(
+      _entryController.text,
+      fallbackType: _entryType,
+    );
+    if (rapidLog.content.isEmpty || _saving) {
       return;
     }
 
@@ -604,8 +608,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
       };
       await dataSource.capture(
         logId: snapshot.logId,
-        type: _entryType,
-        content: content,
+        type: rapidLog.type,
+        content: rapidLog.content,
       );
       final DailyLogSnapshot updatedSnapshot = await dataSource.load(
         formatJournalMethodDate(_today),
