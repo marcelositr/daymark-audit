@@ -44,18 +44,42 @@ jobs:
 
           path = Path('/tmp/apply_polish_round.py')
           lines = path.read_text().splitlines()
-          cut = next(
+
+          start = next(
               (
                   index
-                  for index, line in enumerate(lines[:-1])
-                  if line.startswith('append_once(')
-                  and 'docs/DAILY_TASK_MIGRATION_EXPERIMENT.md' in lines[index + 1]
+                  for index, line in enumerate(lines)
+                  if '"lib/presentation/app_shell.dart"' in line
               ),
               None,
           )
-          if cut is None:
-              raise SystemExit('polish payload documentation boundary not found')
-          path.write_text('\n'.join(lines[:cut]) + '\n')
+          end = next(
+              (
+                  index
+                  for index, line in enumerate(lines)
+                  if index > (start or 0)
+                  and line.startswith('# Localization parity')
+              ),
+              None,
+          )
+
+          if start is None or end is None:
+              raise SystemExit('app shell polish block not found')
+
+          quote_lines = [
+              index
+              for index in range(start, end)
+              if '"""' in lines[index]
+          ]
+
+          if len(quote_lines) == 3:
+              lines.insert(quote_lines[1], '    """,')
+          elif len(quote_lines) != 4:
+              raise SystemExit(
+                  f'unexpected app shell triple-quote count: {len(quote_lines)}'
+              )
+
+          path.write_text('\n'.join(lines) + '\n')
           PY
           python3 -m py_compile /tmp/apply_polish_round.py
           python3 /tmp/apply_polish_round.py
@@ -91,7 +115,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib test
+          git add docs lib test
           if git diff --cached --quiet; then
             echo 'No polish changes to commit.'
             exit 0
