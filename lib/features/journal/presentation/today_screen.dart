@@ -22,6 +22,7 @@ import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
 import 'journal_activity_guard.dart';
 import 'task_collection_migration_dialog.dart';
+import 'task_migration_dialog.dart';
 import 'task_schedule_dialog.dart';
 import 'tracker_data_source.dart';
 import 'tracker_visuals.dart';
@@ -706,14 +707,37 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
     }
 
     final DateTime actionDate = _today;
+    String? migrationMethodDate;
     String? migrationCollectionId;
     if (action == _EntryAction.migrate) {
-      migrationCollectionId = await showTaskCollectionMigrationDialog(
-        context: context,
-        dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
-      );
-      if (!mounted || migrationCollectionId == null) {
+      final TaskMigrationDestination? destination =
+          await showTaskMigrationDestinationDialog(context: context);
+      if (!mounted || destination == null) {
         return;
+      }
+
+      switch (destination) {
+        case TaskMigrationDestination.nextDay:
+          migrationMethodDate = nextTaskMigrationMethodDate(actionDate);
+          break;
+        case TaskMigrationDestination.date:
+          migrationMethodDate = await showTaskDailyMigrationDatePicker(
+            context: context,
+            anchor: actionDate,
+          );
+          if (!mounted || migrationMethodDate == null) {
+            return;
+          }
+          break;
+        case TaskMigrationDestination.collection:
+          migrationCollectionId = await showTaskCollectionMigrationDialog(
+            context: context,
+            dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
+          );
+          if (!mounted || migrationCollectionId == null) {
+            return;
+          }
+          break;
       }
     }
 
@@ -750,12 +774,28 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
           await dataSource.completeTask(entryId: entry.id);
           break;
         case _EntryAction.migrate:
-          await ref
-              .read(taskCollectionMigrationDataSourceProvider)
-              .migrateTask(
+          if (migrationMethodDate != null) {
+            final JournalAccessState access = ref
+                .read(journalSessionControllerProvider)
+                .requireValue;
+            if (access case JournalUnlocked(:final session)) {
+              await session.migrateTaskToDaily(
                 entryId: entry.id,
-                collectionId: migrationCollectionId!,
+                methodDate: migrationMethodDate,
               );
+            } else {
+              throw StateError(
+                'Daily Task migration requires an unlocked journal session.',
+              );
+            }
+          } else {
+            await ref
+                .read(taskCollectionMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  collectionId: migrationCollectionId!,
+                );
+          }
           break;
         case _EntryAction.schedule:
           await dataSource.scheduleTaskToFuture(
