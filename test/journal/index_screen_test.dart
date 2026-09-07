@@ -107,7 +107,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Index item actions').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Remove from Index'));
+    await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
 
     expect(dataSource.items, hasLength(1));

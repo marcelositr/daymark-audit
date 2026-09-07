@@ -189,15 +189,16 @@ class _AppShellState extends State<AppShell> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.search),
-                title: Text(l10n.search),
-                onTap: () => Navigator.of(sheetContext).pop(4),
-              ),
-              ListTile(
                 leading: const Icon(Icons.format_list_numbered),
                 title: Text(l10n.index),
                 onTap: () => Navigator.of(sheetContext).pop(5),
               ),
+              ListTile(
+                leading: const Icon(Icons.search),
+                title: Text(l10n.search),
+                onTap: () => Navigator.of(sheetContext).pop(4),
+              ),
+              const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.backup_outlined),
                 title: Text(l10n.backup),
@@ -208,6 +209,7 @@ class _AppShellState extends State<AppShell> {
                 title: Text(l10n.openExport),
                 onTap: () => Navigator.of(sheetContext).pop(_exportAction),
               ),
+              const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.palette_outlined),
                 title: Text(l10n.appearance),

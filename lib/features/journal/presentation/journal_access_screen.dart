@@ -23,6 +23,8 @@ class _JournalAccessScreenState extends ConsumerState<JournalAccessScreen> {
   final TextEditingController _confirmationController = TextEditingController();
 
   String? _errorMessage;
+  bool _passwordVisible = false;
+  bool _confirmationVisible = false;
 
   @override
   void dispose() {
@@ -83,12 +85,20 @@ class _JournalAccessScreenState extends ConsumerState<JournalAccessScreen> {
           controller: _passwordController,
           label: l10n.masterPassword,
           newPassword: true,
+          visible: _passwordVisible,
+          onToggleVisibility: () {
+            setState(() => _passwordVisible = !_passwordVisible);
+          },
         ),
         const SizedBox(height: 12),
         _passwordField(
           controller: _confirmationController,
           label: l10n.confirmMasterPassword,
           newPassword: true,
+          visible: _confirmationVisible,
+          onToggleVisibility: () {
+            setState(() => _confirmationVisible = !_confirmationVisible);
+          },
           onSubmitted: (_) => _createJournal(),
         ),
         _buildError(context),
@@ -122,6 +132,10 @@ class _JournalAccessScreenState extends ConsumerState<JournalAccessScreen> {
         _passwordField(
           controller: _passwordController,
           label: l10n.masterPassword,
+          visible: _passwordVisible,
+          onToggleVisibility: () {
+            setState(() => _passwordVisible = !_passwordVisible);
+          },
           onSubmitted: (_) => _unlockJournal(),
         ),
         _buildError(context),
@@ -196,12 +210,15 @@ class _JournalAccessScreenState extends ConsumerState<JournalAccessScreen> {
   Widget _passwordField({
     required TextEditingController controller,
     required String label,
+    required bool visible,
+    required VoidCallback onToggleVisibility,
     bool newPassword = false,
     ValueChanged<String>? onSubmitted,
   }) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return TextField(
       controller: controller,
-      obscureText: true,
+      obscureText: !visible,
       autocorrect: false,
       enableSuggestions: false,
       autofillHints: <String>[
@@ -211,7 +228,16 @@ class _JournalAccessScreenState extends ConsumerState<JournalAccessScreen> {
           ? TextInputAction.next
           : TextInputAction.done,
       onSubmitted: onSubmitted,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: IconButton(
+          onPressed: onToggleVisibility,
+          tooltip: visible ? l10n.hidePassword : l10n.showPassword,
+          icon: Icon(
+            visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+          ),
+        ),
+      ),
     );
   }
 
@@ -349,6 +375,7 @@ final class _RestorePasswordDialog extends StatefulWidget {
 final class _RestorePasswordDialogState extends State<_RestorePasswordDialog> {
   final TextEditingController _passwordController = TextEditingController();
   String? _errorMessage;
+  bool _passwordVisible = false;
 
   @override
   void dispose() {
@@ -377,14 +404,29 @@ final class _RestorePasswordDialogState extends State<_RestorePasswordDialog> {
             const SizedBox(height: 20),
             TextField(
               controller: _passwordController,
-              obscureText: true,
+              obscureText: !_passwordVisible,
               autocorrect: false,
               enableSuggestions: false,
               autofocus: true,
               autofillHints: const <String>[AutofillHints.password],
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(labelText: l10n.masterPassword),
+              decoration: InputDecoration(
+                labelText: l10n.masterPassword,
+                suffixIcon: IconButton(
+                  onPressed: () {
+                    setState(() => _passwordVisible = !_passwordVisible);
+                  },
+                  tooltip: _passwordVisible
+                      ? l10n.hidePassword
+                      : l10n.showPassword,
+                  icon: Icon(
+                    _passwordVisible
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
+              ),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),

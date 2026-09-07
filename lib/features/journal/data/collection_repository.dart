@@ -71,7 +71,7 @@ final class CollectionRepository {
     final rows = await _database.customSelect('''
       SELECT id, title
       FROM collections
-      ORDER BY created_at, id
+      ORDER BY created_at DESC, id DESC
     ''').get();
 
     return <CollectionSummary>[
@@ -85,6 +85,10 @@ final class CollectionRepository {
 
   Future<String> create({required String title}) {
     return _journalService.createCollection(title: title);
+  }
+
+  Future<void> undoCreate(String collectionId) {
+    return _journalService.undoCollectionCreation(collectionId: collectionId);
   }
 
   Future<CollectionSnapshot> load(String collectionId) async {

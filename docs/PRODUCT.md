@@ -324,3 +324,25 @@ Before accepting any post-freeze change, ask:
 5. Are existing data/security compatibility boundaries preserved and tested where relevant?
 
 If the answer to the first question is no, or the change expands what Daymark does, it does not belong under the current product freeze without an explicit maintainer decision to reopen scope.
+
+## Experimental Bullet Journal fidelity extensions
+
+The isolated `feat/daily-task-migration` branch additionally evaluates three method-native capabilities explicitly approved by the maintainer:
+
+- dated Tasks in the Monthly Calendar, alongside Events;
+- deliberate Future Event arrival migration into a user-selected day of the matching Monthly Calendar;
+- optional built-in Signifiers for Priority, Inspiration, and Explore.
+
+These additions preserve Daymark's minimalism: there is no automatic rollover, no guessed Event date, no new planner abstraction, and no custom Signifier system. They remain experimental until the maintainer explicitly promotes this PR.
+
+### Interaction polish principles
+
+- reserve a stable visual column for zero to three Signifiers before the Bullet;
+- keep recently-created Collections easiest to reach;
+- offer short-lived Undo for accidental capture or empty Collection creation,
+  not permanent destructive editing;
+- let Search exploit structured Signifiers without making them mandatory;
+- keep password visibility temporary and opt-in on every password surface;
+- prefer context-aware action verbs when the screen already names the object;
+- keep the primary navigation ordered Today → Monthly → Future → Collections,
+  with Index before Search inside the secondary menu.

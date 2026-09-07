@@ -8,6 +8,8 @@ enum JournalMonthlySection { calendar, tasks }
 
 enum JournalMigrationKind { migrated, scheduled }
 
+enum JournalSignifier { priority, inspiration, explore }
+
 extension JournalLogKindCode on JournalLogKind {
   String get code => switch (this) {
     JournalLogKind.daily => 'daily',
@@ -40,6 +42,21 @@ extension JournalMonthlySectionCode on JournalMonthlySection {
     JournalMonthlySection.tasks => 'tasks',
   };
 }
+
+extension JournalSignifierCode on JournalSignifier {
+  String get code => switch (this) {
+    JournalSignifier.priority => 'priority',
+    JournalSignifier.inspiration => 'inspiration',
+    JournalSignifier.explore => 'explore',
+  };
+}
+
+JournalSignifier journalSignifierFromCode(String code) => switch (code) {
+  'priority' => JournalSignifier.priority,
+  'inspiration' => JournalSignifier.inspiration,
+  'explore' => JournalSignifier.explore,
+  _ => throw JournalInvariantException('Unknown persisted signifier: $code.'),
+};
 
 extension JournalMigrationKindCode on JournalMigrationKind {
   String get code => switch (this) {

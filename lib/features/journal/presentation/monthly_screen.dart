@@ -16,12 +16,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
 import 'journal_activity_guard.dart';
+import 'monthly_calendar_task_data_source.dart';
 import 'task_collection_migration_dialog.dart';
+import 'task_migration_dialog.dart';
 import 'task_schedule_dialog.dart';
 import 'tracker_create_dialog.dart';
 import 'tracker_data_source.dart';
@@ -145,8 +149,10 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
   late bool _followingCurrentMonth;
   Timer? _monthRolloverTimer;
   late _MonthlyViewSection _section;
+  JournalEntryType _calendarEntryType = JournalEntryType.event;
   bool _saving = false;
   bool _trackerSaving = false;
+  bool _reflecting = false;
   String? _entryActionId;
   bool _sectionScopeInitialized = false;
   bool _wasMonthlySectionActive = false;
@@ -224,6 +230,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final bool busy = _saving || _trackerSaving || _entryActionId != null;
+    final MaterialLocalizations material = MaterialLocalizations.of(context);
 
     return DaymarkPageFrame(
       child: Column(
@@ -237,9 +244,18 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                 icon: const Icon(Icons.chevron_left),
               ),
               Expanded(
-                child: Text(
-                  MaterialLocalizations.of(context).formatMonthYear(_month),
-                  style: Theme.of(context).textTheme.headlineSmall,
+                child: TextButton(
+                  onPressed: busy ? null : _chooseMonth,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    alignment: Alignment.center,
+                  ),
+                  child: Text(
+                    material.formatMonthYear(_month),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                 ),
               ),
               IconButton(
@@ -249,6 +265,23 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                 tooltip: l10n.nextMonth,
                 icon: const Icon(Icons.chevron_right),
               ),
+              if (!_followingCurrentMonth)
+                IconButton(
+                  onPressed: busy ? null : _goToCurrentMonth,
+                  tooltip: l10n.today,
+                  icon: const Icon(Icons.today_outlined),
+                ),
+              if (_followingCurrentMonth &&
+                  _section == _MonthlyViewSection.tasks)
+                IconButton(
+                  onPressed: busy ? null : _toggleReflection,
+                  tooltip: _reflecting
+                      ? l10n.finishReflection
+                      : l10n.startReflection,
+                  icon: Icon(
+                    _reflecting ? Icons.fact_check : Icons.fact_check_outlined,
+                  ),
+                ),
               IconButton(
                 onPressed: _lock,
                 tooltip: l10n.lockJournal,
@@ -260,6 +293,13 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             const SizedBox(height: 4),
             Text(
               l10n.monthlyHistoryReadOnly,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (_reflecting) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.dailyReflectionPrompt,
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -287,7 +327,13 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                   ? null
                   : (selection) {
                       _entryController.clear();
-                      setState(() => _section = selection.single);
+                      final _MonthlyViewSection nextSection = selection.single;
+                      setState(() {
+                        _section = nextSection;
+                        if (nextSection != _MonthlyViewSection.tasks) {
+                          _reflecting = false;
+                        }
+                      });
                       if (_section == _MonthlyViewSection.tracker) {
                         _entryFocusNode.unfocus();
                       } else {
@@ -327,7 +373,8 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
           ),
           const DaymarkNoticeRegion(),
           if (_followingCurrentMonth &&
-              _section != _MonthlyViewSection.tracker) ...[
+              _section != _MonthlyViewSection.tracker &&
+              !_reflecting) ...[
             const SizedBox(height: 12),
             _buildComposer(l10n),
           ],
@@ -394,6 +441,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     final int dayCount = _daysInMonth(_month);
     final List<MonthlyLogEntry> calendarEntries =
         snapshot?.calendarEntries ?? const <MonthlyLogEntry>[];
+    final DateTime today = _dateOnly(_now());
 
     return ListView.builder(
       itemCount: dayCount,
@@ -406,6 +454,11 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             if (entry.calendarDate == methodDate) entry,
         ];
         final String weekday = material.narrowWeekdays[date.weekday % 7];
+        final bool canOpenDaily = !date.isAfter(today);
+        final Widget dayLabel = Text(
+          '$dayNumber $weekday',
+          style: Theme.of(context).textTheme.bodyMedium,
+        );
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -414,10 +467,16 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             children: [
               SizedBox(
                 width: 52,
-                child: Text(
-                  '$dayNumber $weekday',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                child: canOpenDaily
+                    ? InkWell(
+                        onTap: () => _openDailyForDate(date),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: dayLabel,
+                        ),
+                      )
+                    : dayLabel,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -427,34 +486,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
                     for (final MonthlyLogEntry entry in entries)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: _followingCurrentMonth
-                            ? PopupMenuButton<_MonthlyEntryAction>(
-                                enabled: _entryActionId == null,
-                                tooltip: l10n.entryActions,
-                                padding: EdgeInsets.zero,
-                                onSelected: (action) {
-                                  unawaited(_applyEntryAction(entry, action));
-                                },
-                                itemBuilder: (context) => [
-                                  PopupMenuItem<_MonthlyEntryAction>(
-                                    value: _MonthlyEntryAction.reference,
-                                    child: Text(l10n.referenceEntry),
-                                  ),
-                                ],
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: Text(
-                                    '○ ${entry.content}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyLarge,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                '○ ${entry.content}',
-                                style: Theme.of(context).textTheme.bodyLarge,
-                              ),
+                        child: _buildCalendarEntryRow(context, l10n, entry),
                       ),
                   ],
                 ),
@@ -466,15 +498,128 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     );
   }
 
+  Widget _buildCalendarEntryRow(
+    BuildContext context,
+    AppLocalizations l10n,
+    MonthlyLogEntry entry,
+  ) {
+    final bool actionInProgress = _entryActionId == entry.id;
+    final bool openTask =
+        entry.type == JournalEntryType.task &&
+        entry.taskState == JournalTaskState.open;
+    final TextStyle? entryStyle = Theme.of(context).textTheme.bodyLarge;
+    final Widget marker = actionInProgress
+        ? const Center(
+            child: SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        : Text(
+            _monthlyCalendarEntrySymbol(entry),
+            textAlign: TextAlign.center,
+            style: entry.taskState == JournalTaskState.discarded
+                ? Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(decoration: TextDecoration.lineThrough)
+                : Theme.of(context).textTheme.titleMedium,
+          );
+    final Widget row = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EntrySignifierMarks(entryId: entry.id),
+        SizedBox(width: 28, child: marker),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Semantics(
+            label: journalEntrySemanticLabel(
+              l10n,
+              type: entry.type,
+              taskState: entry.taskState,
+              content: entry.content,
+            ),
+            child: ExcludeSemantics(
+              child: Text(
+                entry.content,
+                style: entry.taskState == JournalTaskState.discarded
+                    ? entryStyle?.copyWith(
+                        decoration: TextDecoration.lineThrough,
+                      )
+                    : entryStyle,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    if (!_followingCurrentMonth || actionInProgress) {
+      return row;
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: PopupMenuButton<_MonthlyEntryAction>(
+        enabled: _entryActionId == null,
+        tooltip: l10n.entryActions,
+        padding: EdgeInsets.zero,
+        onSelected: (action) {
+          unawaited(_applyEntryAction(entry, action));
+        },
+        itemBuilder: (context) => [
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.complete,
+              child: Text(l10n.completeTask),
+            ),
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.migrate,
+              child: Text(l10n.migrateTask),
+            ),
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.schedule,
+              child: Text(l10n.scheduleTask),
+            ),
+          PopupMenuItem(
+            value: _MonthlyEntryAction.reference,
+            child: Text(l10n.referenceEntry),
+          ),
+          PopupMenuItem(
+            value: _MonthlyEntryAction.signifiers,
+            child: Text(l10n.signifiers),
+          ),
+          if (openTask)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.discard,
+              child: Text(l10n.discardTask),
+            ),
+        ],
+        child: row,
+      ),
+    );
+  }
+
   Widget _buildTasks(
     BuildContext context,
     AppLocalizations l10n,
     MonthlyLogSnapshot? snapshot,
   ) {
-    final List<MonthlyLogEntry> taskEntries =
+    final List<MonthlyLogEntry> allTaskEntries =
         snapshot?.taskEntries ?? const <MonthlyLogEntry>[];
+    final List<MonthlyLogEntry> taskEntries = _reflecting
+        ? <MonthlyLogEntry>[
+            for (final MonthlyLogEntry entry in allTaskEntries)
+              if (entry.type == JournalEntryType.task &&
+                  entry.taskState == JournalTaskState.open)
+                entry,
+          ]
+        : allTaskEntries;
     if (taskEntries.isEmpty) {
-      return DaymarkEmptyState(message: l10n.emptyMonthlyTasks, topPadding: 16);
+      return DaymarkEmptyState(
+        message: _reflecting
+            ? l10n.dailyReflectionEmpty
+            : l10n.emptyMonthlyTasks,
+        topPadding: 16,
+      );
     }
 
     return ListView.separated(
@@ -516,6 +661,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(width: 28, child: marker),
         const SizedBox(width: 8),
         Expanded(
@@ -570,10 +716,16 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
               value: _MonthlyEntryAction.schedule,
               child: Text(l10n.scheduleTask),
             ),
-          PopupMenuItem(
-            value: _MonthlyEntryAction.reference,
-            child: Text(l10n.referenceEntry),
-          ),
+          if (!_reflecting)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.reference,
+              child: Text(l10n.referenceEntry),
+            ),
+          if (!_reflecting)
+            PopupMenuItem(
+              value: _MonthlyEntryAction.signifiers,
+              child: Text(l10n.signifiers),
+            ),
           if (openTask)
             PopupMenuItem(
               value: _MonthlyEntryAction.discard,
@@ -607,6 +759,28 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             ],
           ),
           const SizedBox(width: 12),
+          DaymarkDropdownButton<JournalEntryType>(
+            value: _calendarEntryType,
+            onChanged: _saving
+                ? null
+                : (value) {
+                    if (value != null) {
+                      setState(() => _calendarEntryType = value);
+                      _restoreComposerFocus();
+                    }
+                  },
+            items: [
+              DropdownMenuItem(
+                value: JournalEntryType.event,
+                child: Text(l10n.entryEvent),
+              ),
+              DropdownMenuItem(
+                value: JournalEntryType.task,
+                child: Text(l10n.entryTask),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
         ],
         Expanded(
           child: Focus(
@@ -623,7 +797,9 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
               onChanged: (_) => JournalActivityGuard.recordActivity(context),
               decoration: InputDecoration(
                 hintText: calendar
-                    ? l10n.monthlyEventHint
+                    ? (_calendarEntryType == JournalEntryType.task
+                          ? l10n.monthlyCalendarTaskHint
+                          : l10n.monthlyEventHint)
                     : l10n.monthlyTaskHint,
                 isDense: true,
               ),
@@ -659,6 +835,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     if (defaultTargetPlatform != TargetPlatform.linux ||
         !_followingCurrentMonth ||
         _section == _MonthlyViewSection.tracker ||
+        _reflecting ||
         _saving ||
         _entryActionId != null) {
       return;
@@ -667,6 +844,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
       if (mounted &&
           _followingCurrentMonth &&
           _section != _MonthlyViewSection.tracker &&
+          !_reflecting &&
           !_saving &&
           _entryActionId == null) {
         _entryFocusNode.requestFocus();
@@ -697,11 +875,40 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     return _trackerDataSource().loadMonth(formatJournalMonthStart(month));
   }
 
-  Future<void> _selectMonth(int offset) async {
+  Future<void> _selectMonth(int offset) {
+    return _moveToMonth(DateTime(_month.year, _month.month + offset));
+  }
+
+  Future<void> _chooseMonth() async {
     if (_saving || _trackerSaving || _entryActionId != null) {
       return;
     }
-    final DateTime target = DateTime(_month.year, _month.month + offset);
+    final DateTime today = _dateOnly(_now());
+    final DateTime initialDate = _sameMonth(_month, _currentMonth())
+        ? today
+        : DateTime(_month.year, _month.month, 1);
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1900),
+      lastDate: today,
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDatePickerMode: DatePickerMode.year,
+    );
+    if (!mounted || selected == null) {
+      return;
+    }
+    await _moveToMonth(DateTime(selected.year, selected.month));
+  }
+
+  Future<void> _goToCurrentMonth() {
+    return _moveToMonth(_currentMonth());
+  }
+
+  Future<void> _moveToMonth(DateTime target) async {
+    if (_saving || _trackerSaving || _entryActionId != null) {
+      return;
+    }
     final DateTime currentMonth = _currentMonth();
     if (_isAfterMonth(target, currentMonth)) {
       return;
@@ -714,6 +921,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     setState(() {
       _month = target;
       _followingCurrentMonth = followingCurrentMonth;
+      _reflecting = false;
       _selectedDay = followingCurrentMonth ? _clampDay(now.day, target) : 1;
       _snapshotFuture = _loadSnapshotFor(
         target,
@@ -727,10 +935,24 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     }
   }
 
+  void _openDailyForDate(DateTime date) {
+    final DateTime target = _dateOnly(date);
+    final DateTime today = _dateOnly(_now());
+    if (target.isAfter(today)) {
+      return;
+    }
+    if (target == today) {
+      context.go('/');
+      return;
+    }
+    context.go('/daily/${_formatMethodDate(target)}');
+  }
+
   Future<void> _capture() async {
     final String content = _entryController.text.trim();
     if (content.isEmpty ||
         _saving ||
+        _reflecting ||
         !_followingCurrentMonth ||
         _section == _MonthlyViewSection.tracker) {
       return;
@@ -756,13 +978,24 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
         for (final MonthlyLogEntry entry in snapshot.taskEntries) entry.id,
       };
       if (section == JournalMonthlySection.calendar) {
-        await dataSource.captureCalendarEvent(
-          logId: snapshot.logId,
-          calendarDate: _formatMethodDate(
-            DateTime(month.year, month.month, selectedDay),
-          ),
-          content: content,
+        final String calendarDate = _formatMethodDate(
+          DateTime(month.year, month.month, selectedDay),
         );
+        if (_calendarEntryType == JournalEntryType.task) {
+          await ref
+              .read(monthlyCalendarTaskDataSourceProvider)
+              .capture(
+                logId: snapshot.logId,
+                calendarDate: calendarDate,
+                content: content,
+              );
+        } else {
+          await dataSource.captureCalendarEvent(
+            logId: snapshot.logId,
+            calendarDate: calendarDate,
+            content: content,
+          );
+        }
       } else {
         await dataSource.captureTask(logId: snapshot.logId, content: content);
       }
@@ -949,22 +1182,77 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     if (_entryActionId != null || !_followingCurrentMonth) {
       return;
     }
+    if (_reflecting &&
+        (action == _MonthlyEntryAction.reference ||
+            action == _MonthlyEntryAction.signifiers)) {
+      return;
+    }
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
-    if (action != _MonthlyEntryAction.reference && !openTask) {
+    if (action != _MonthlyEntryAction.reference &&
+        action != _MonthlyEntryAction.signifiers &&
+        !openTask) {
+      return;
+    }
+    if (action == _MonthlyEntryAction.signifiers) {
+      try {
+        await showEntrySignifierDialog(
+          context: context,
+          ref: ref,
+          entryId: entry.id,
+        );
+      } catch (error, stackTrace) {
+        _reportUnexpectedMonthlyError('signifiers', error, stackTrace);
+        if (mounted) {
+          ref
+              .read(daymarkNoticeProvider.notifier)
+              .showError(AppLocalizations.of(context).signifierUpdateFailed);
+        }
+      }
       return;
     }
 
     final DateTime actionMonth = _month;
+    final DateTime actionDate = _dateOnly(_now());
+    String? migrationMethodDate;
+    String? migrationMonthStart;
     String? migrationCollectionId;
     if (action == _MonthlyEntryAction.migrate) {
-      migrationCollectionId = await showTaskCollectionMigrationDialog(
-        context: context,
-        dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
-      );
-      if (!mounted || migrationCollectionId == null) {
+      final TaskMigrationDestination? destination =
+          await showTaskMigrationDestinationDialog(
+            context: context,
+            includeNextMonth: true,
+          );
+      if (!mounted || destination == null) {
         return;
+      }
+
+      switch (destination) {
+        case TaskMigrationDestination.nextDay:
+          migrationMethodDate = nextTaskMigrationMethodDate(actionDate);
+          break;
+        case TaskMigrationDestination.date:
+          migrationMethodDate = await showTaskDailyMigrationDatePicker(
+            context: context,
+            anchor: actionDate,
+          );
+          if (!mounted || migrationMethodDate == null) {
+            return;
+          }
+          break;
+        case TaskMigrationDestination.nextMonth:
+          migrationMonthStart = nextTaskMigrationMonthStart(actionMonth);
+          break;
+        case TaskMigrationDestination.collection:
+          migrationCollectionId = await showTaskCollectionMigrationDialog(
+            context: context,
+            dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
+          );
+          if (!mounted || migrationCollectionId == null) {
+            return;
+          }
+          break;
       }
     }
 
@@ -1001,12 +1289,28 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
           await dataSource.completeTask(entryId: entry.id);
           break;
         case _MonthlyEntryAction.migrate:
-          await ref
-              .read(taskCollectionMigrationDataSourceProvider)
-              .migrateTask(
-                entryId: entry.id,
-                collectionId: migrationCollectionId!,
-              );
+          if (migrationMethodDate != null) {
+            await ref
+                .read(dailyTaskMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  methodDate: migrationMethodDate,
+                );
+          } else if (migrationMonthStart != null) {
+            await ref
+                .read(monthlyTaskMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  periodStart: migrationMonthStart,
+                );
+          } else {
+            await ref
+                .read(taskCollectionMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  collectionId: migrationCollectionId!,
+                );
+          }
           break;
         case _MonthlyEntryAction.schedule:
           await dataSource.scheduleTaskToFuture(
@@ -1024,6 +1328,8 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
           break;
         case _MonthlyEntryAction.discard:
           await dataSource.discardTask(entryId: entry.id);
+          break;
+        case _MonthlyEntryAction.signifiers:
           break;
       }
 
@@ -1054,6 +1360,24 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
     }
   }
 
+  void _toggleReflection() {
+    if (_saving ||
+        _trackerSaving ||
+        _entryActionId != null ||
+        !_followingCurrentMonth ||
+        _section != _MonthlyViewSection.tasks) {
+      return;
+    }
+
+    final bool enteringReflection = !_reflecting;
+    setState(() => _reflecting = enteringReflection);
+    if (enteringReflection) {
+      _entryFocusNode.unfocus();
+      return;
+    }
+    _restoreComposerFocus();
+  }
+
   Future<void> _lock() async {
     try {
       await ref.read(journalSessionControllerProvider.notifier).lock();
@@ -1078,6 +1402,7 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
 
     setState(() {
       _month = currentMonth;
+      _reflecting = false;
       _selectedDay = _clampDay(now.day, _month);
       _snapshotFuture = _loadSnapshotFor(_month, writable: true);
       _trackerFuture = _loadTrackerMonth(_month);
@@ -1109,7 +1434,14 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
 
 enum _MonthlyViewSection { calendar, tasks, tracker }
 
-enum _MonthlyEntryAction { complete, migrate, schedule, reference, discard }
+enum _MonthlyEntryAction {
+  complete,
+  migrate,
+  schedule,
+  reference,
+  signifiers,
+  discard,
+}
 
 int _daysInMonth(DateTime month) {
   return DateTime(month.year, month.month + 1, 0).day;
@@ -1135,11 +1467,20 @@ bool _isAfterMonth(DateTime left, DateTime right) {
       (left.year == right.year && left.month > right.month);
 }
 
+DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+
 String _formatMethodDate(DateTime date) {
   return '${date.year.toString().padLeft(4, '0')}-'
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
 }
+
+String _monthlyCalendarEntrySymbol(MonthlyLogEntry entry) =>
+    switch (entry.type) {
+      JournalEntryType.task => _taskSymbol(entry.taskState),
+      JournalEntryType.event => '○',
+      JournalEntryType.note => '–',
+    };
 
 String _taskSymbol(JournalTaskState? state) => switch (state) {
   JournalTaskState.completed => '×',

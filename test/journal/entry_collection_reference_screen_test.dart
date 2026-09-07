@@ -75,7 +75,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('○ Monthly event'));
+    await tester.tap(find.text('Monthly event'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Reference'));
     await tester.pumpAndSettle();
@@ -85,7 +85,7 @@ void main() {
     expect(references.entryId, 'monthly-event');
     expect(monthly.entry.calendarDate, '2026-09-03');
     expect(monthly.entry.taskState, isNull);
-    expect(find.text('○ Monthly event'), findsOneWidget);
+    expect(find.text('Monthly event'), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
   });
 
@@ -249,6 +249,9 @@ final class _FutureJournal implements FutureJournalDataSource {
     periodStart: periodStart,
     entries: periodStart == '2026-10-01' ? [entry] : const [],
   );
+
+  @override
+  Future<FutureLogSnapshot?> find(String periodStart) async => null;
 
   @override
   Future<void> capture({

@@ -17,12 +17,16 @@ import 'package:go_router/go_router.dart';
 
 import 'entry_capture_undo.dart';
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
 import 'journal_activity_guard.dart';
+import 'rapid_log_input.dart';
 
 abstract interface class CollectionsJournalDataSource {
   Future<List<CollectionSummary>> list();
 
   Future<String> create({required String title});
+
+  Future<void> undoCreate(String collectionId);
 
   Future<CollectionSnapshot> load(String collectionId);
 
@@ -67,6 +71,11 @@ final class _SessionCollectionsJournalDataSource
   @override
   Future<String> create({required String title}) {
     return _session.createCollection(title: title);
+  }
+
+  @override
+  Future<void> undoCreate(String collectionId) {
+    return _session.undoCollectionCreation(collectionId: collectionId);
   }
 
   @override
@@ -419,6 +428,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(
           width: 28,
           child: Text(
@@ -492,6 +502,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(width: 28, child: marker),
         const SizedBox(width: 8),
         Expanded(
@@ -517,7 +528,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
-    if (!openTask || actionInProgress) return row;
+    if (actionInProgress) return row;
 
     return SizedBox(
       width: double.infinity,
@@ -529,14 +540,20 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           unawaited(_applyTaskAction(entry, action));
         },
         itemBuilder: (context) => [
+          if (openTask)
+            PopupMenuItem(
+              value: _CollectionTaskAction.complete,
+              child: Text(l10n.completeTask),
+            ),
           PopupMenuItem(
-            value: _CollectionTaskAction.complete,
-            child: Text(l10n.completeTask),
+            value: _CollectionTaskAction.signifiers,
+            child: Text(l10n.signifiers),
           ),
-          PopupMenuItem(
-            value: _CollectionTaskAction.discard,
-            child: Text(l10n.discardTask),
-          ),
+          if (openTask)
+            PopupMenuItem(
+              value: _CollectionTaskAction.discard,
+              child: Text(l10n.discardTask),
+            ),
         ],
         child: row,
       ),
@@ -574,6 +591,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   }
 
   void _open(String collectionId) {
+    ref.read(daymarkNoticeProvider.notifier).dismiss();
     setState(() {
       _selectedCollectionId = collectionId;
       _collectionFuture = _dataSource().load(collectionId);
@@ -602,13 +620,14 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() => _saving = true);
     try {
-      await _dataSource().create(title: title);
+      final String collectionId = await _dataSource().create(title: title);
       if (!mounted) return;
       _titleController.clear();
       setState(() {
         _collectionsFuture = _dataSource().list();
         _saving = false;
       });
+      _showCollectionCreationUndo(collectionId);
       _restoreActiveFocus();
     } catch (error, stackTrace) {
       _reportUnexpectedCollectionsError('create', error, stackTrace);
@@ -620,10 +639,46 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     }
   }
 
+  void _showCollectionCreationUndo(String collectionId) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    ref
+        .read(daymarkNoticeProvider.notifier)
+        .showUndo(
+          message: l10n.collectionCreated,
+          actionLabel: l10n.undo,
+          onUndo: () => _undoCollectionCreation(collectionId),
+        );
+  }
+
+  Future<void> _undoCollectionCreation(String collectionId) async {
+    JournalActivityGuard.recordActivity(context);
+    try {
+      await _dataSource().undoCreate(collectionId);
+      if (!mounted) return;
+      setState(() {
+        _collectionsFuture = _dataSource().list();
+      });
+      _restoreActiveFocus();
+    } catch (error, stackTrace) {
+      _reportUnexpectedCollectionsError(
+        'Collection creation undo',
+        error,
+        stackTrace,
+      );
+      if (!mounted) return;
+      ref
+          .read(daymarkNoticeProvider.notifier)
+          .showError(AppLocalizations.of(context).undoCollectionCreationFailed);
+    }
+  }
+
   Future<void> _capture() async {
-    final String content = _entryController.text.trim();
+    final RapidLogInput rapidLog = parseRapidLogInput(
+      _entryController.text,
+      fallbackType: _entryType,
+    );
     final String? collectionId = _selectedCollectionId;
-    if (content.isEmpty || collectionId == null || _saving) return;
+    if (rapidLog.content.isEmpty || collectionId == null || _saving) return;
     final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() => _saving = true);
     try {
@@ -633,8 +688,8 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       };
       await _dataSource().capture(
         collectionId: collectionId,
-        type: _entryType,
-        content: content,
+        type: rapidLog.type,
+        content: rapidLog.content,
       );
       final CollectionSnapshot updatedSnapshot = await _dataSource().load(
         collectionId,
@@ -701,6 +756,29 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   ) async {
     final String? collectionId = _selectedCollectionId;
     if (collectionId == null || _taskActionEntryId != null) return;
+    if (action == _CollectionTaskAction.signifiers) {
+      try {
+        await showEntrySignifierDialog(
+          context: context,
+          ref: ref,
+          entryId: entry.id,
+        );
+      } catch (error, stackTrace) {
+        _reportUnexpectedCollectionsError('signifiers', error, stackTrace);
+        if (mounted) {
+          ref
+              .read(daymarkNoticeProvider.notifier)
+              .showError(AppLocalizations.of(context).signifierUpdateFailed);
+        }
+      }
+      return;
+    }
+    final bool openTask =
+        entry.type == JournalEntryType.task &&
+        entry.taskState == JournalTaskState.open;
+    if (!openTask) {
+      return;
+    }
     // Any deliberate journal action supersedes the short-lived capture Undo.
     ref.read(daymarkNoticeProvider.notifier).dismiss();
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -711,6 +789,8 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           await _dataSource().completeTask(entryId: entry.id);
         case _CollectionTaskAction.discard:
           await _dataSource().discardTask(entryId: entry.id);
+        case _CollectionTaskAction.signifiers:
+          break;
       }
       if (!mounted) return;
       setState(() {
@@ -766,7 +846,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   }
 }
 
-enum _CollectionTaskAction { complete, discard }
+enum _CollectionTaskAction { complete, signifiers, discard }
 
 enum _CollectionReferenceAction { remove }
 

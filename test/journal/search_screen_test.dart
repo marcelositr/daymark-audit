@@ -63,7 +63,7 @@ void main() {
 
     await _pumpSearch(tester, dataSource);
 
-    expect(find.text('Enter text to search your journal.'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), '  radio  ');
     await tester.tap(find.widgetWithIcon(IconButton, Icons.search));
@@ -156,7 +156,10 @@ final class _MemorySearchJournal implements SearchJournalDataSource {
   String? lastQuery;
 
   @override
-  Future<List<JournalSearchResult>> search(String query) async {
+  Future<List<JournalSearchResult>> search(
+    String query, {
+    Set<JournalSignifier> signifiers = const <JournalSignifier>{},
+  }) async {
     lastQuery = query;
     return List<JournalSearchResult>.unmodifiable(_results);
   }

@@ -27,12 +27,12 @@ void main() {
     expect(dataSource.calendarEntries.single.calendarDate, '2026-09-15');
 
     await tester.dragUntilVisible(
-      find.text('○ Dentist'),
+      find.text('Dentist'),
       find.byType(ListView),
       const Offset(0, -200),
     );
 
-    expect(find.text('○ Dentist'), findsOneWidget);
+    expect(find.text('Dentist'), findsOneWidget);
     expect(find.text('Entry created.'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
 
@@ -179,7 +179,7 @@ void main() {
 
     expect(find.text('August 2026'), findsOneWidget);
     expect(find.text('Historical Monthly Logs are read-only.'), findsOneWidget);
-    expect(find.text('○ Historic meeting'), findsOneWidget);
+    expect(find.text('Historic meeting'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(dataSource.loadPeriods, ['2026-09-01']);
     expect(dataSource.findPeriods, ['2026-08-01']);

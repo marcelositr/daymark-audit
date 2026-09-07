@@ -20,8 +20,11 @@ import 'package:go_router/go_router.dart';
 import 'entry_capture_undo.dart';
 import 'entry_collection_reference_dialog.dart';
 import 'entry_semantics.dart';
+import 'entry_signifiers.dart';
 import 'journal_activity_guard.dart';
+import 'rapid_log_input.dart';
 import 'task_collection_migration_dialog.dart';
+import 'task_migration_dialog.dart';
 import 'task_schedule_dialog.dart';
 import 'tracker_data_source.dart';
 import 'tracker_visuals.dart';
@@ -187,6 +190,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
     final AppLocalizations l10n = AppLocalizations.of(context);
     final bool busy =
         _saving || _entryActionId != null || _trackerActionId != null;
+    final MaterialLocalizations material = MaterialLocalizations.of(context);
 
     return DaymarkPageFrame(
       child: Column(
@@ -194,11 +198,30 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
         children: [
           Row(
             children: [
+              IconButton(
+                onPressed: busy ? null : _openPreviousDay,
+                tooltip: l10n.previousDay,
+                icon: const Icon(Icons.chevron_left),
+              ),
               Expanded(
-                child: Text(
-                  MaterialLocalizations.of(context).formatFullDate(_today),
-                  style: Theme.of(context).textTheme.headlineSmall,
+                child: TextButton(
+                  onPressed: busy ? null : _chooseDate,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    alignment: Alignment.center,
+                  ),
+                  child: Text(
+                    material.formatFullDate(_today),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                 ),
+              ),
+              IconButton(
+                onPressed: null,
+                tooltip: l10n.nextDay,
+                icon: const Icon(Icons.chevron_right),
               ),
               IconButton(
                 onPressed: busy ? null : _toggleReflection,
@@ -208,11 +231,6 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
                 icon: Icon(
                   _reflecting ? Icons.fact_check : Icons.fact_check_outlined,
                 ),
-              ),
-              IconButton(
-                onPressed: _openHistory,
-                tooltip: l10n.dailyHistory,
-                icon: const Icon(Icons.history),
               ),
               IconButton(
                 onPressed: _lock,
@@ -427,6 +445,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        EntrySignifierMarks(entryId: entry.id),
         SizedBox(width: 28, child: marker),
         const SizedBox(width: 8),
         Expanded(
@@ -485,6 +504,11 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
             PopupMenuItem(
               value: _EntryAction.reference,
               child: Text(l10n.referenceEntry),
+            ),
+          if (!_reflecting)
+            PopupMenuItem(
+              value: _EntryAction.signifiers,
+              child: Text(l10n.signifiers),
             ),
           if (openTask)
             PopupMenuItem(
@@ -587,8 +611,11 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
   }
 
   Future<void> _capture() async {
-    final String content = _entryController.text.trim();
-    if (content.isEmpty || _saving) {
+    final RapidLogInput rapidLog = parseRapidLogInput(
+      _entryController.text,
+      fallbackType: _entryType,
+    );
+    if (rapidLog.content.isEmpty || _saving) {
       return;
     }
 
@@ -603,8 +630,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
       };
       await dataSource.capture(
         logId: snapshot.logId,
-        type: _entryType,
-        content: content,
+        type: rapidLog.type,
+        content: rapidLog.content,
       );
       final DailyLogSnapshot updatedSnapshot = await dataSource.load(
         formatJournalMethodDate(_today),
@@ -701,19 +728,63 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
     final bool openTask =
         entry.type == JournalEntryType.task &&
         entry.taskState == JournalTaskState.open;
-    if (action != _EntryAction.reference && !openTask) {
+    if (action != _EntryAction.reference &&
+        action != _EntryAction.signifiers &&
+        !openTask) {
+      return;
+    }
+    if (action == _EntryAction.signifiers) {
+      try {
+        await showEntrySignifierDialog(
+          context: context,
+          ref: ref,
+          entryId: entry.id,
+        );
+      } catch (error, stackTrace) {
+        _reportUnexpectedJournalError('signifiers', error, stackTrace);
+        if (mounted) {
+          ref
+              .read(daymarkNoticeProvider.notifier)
+              .showError(AppLocalizations.of(context).signifierUpdateFailed);
+        }
+      }
       return;
     }
 
     final DateTime actionDate = _today;
+    String? migrationMethodDate;
     String? migrationCollectionId;
     if (action == _EntryAction.migrate) {
-      migrationCollectionId = await showTaskCollectionMigrationDialog(
-        context: context,
-        dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
-      );
-      if (!mounted || migrationCollectionId == null) {
+      final TaskMigrationDestination? destination =
+          await showTaskMigrationDestinationDialog(context: context);
+      if (!mounted || destination == null) {
         return;
+      }
+
+      switch (destination) {
+        case TaskMigrationDestination.nextDay:
+          migrationMethodDate = nextTaskMigrationMethodDate(actionDate);
+          break;
+        case TaskMigrationDestination.date:
+          migrationMethodDate = await showTaskDailyMigrationDatePicker(
+            context: context,
+            anchor: actionDate,
+          );
+          if (!mounted || migrationMethodDate == null) {
+            return;
+          }
+          break;
+        case TaskMigrationDestination.nextMonth:
+          return;
+        case TaskMigrationDestination.collection:
+          migrationCollectionId = await showTaskCollectionMigrationDialog(
+            context: context,
+            dataSource: ref.read(taskCollectionMigrationDataSourceProvider),
+          );
+          if (!mounted || migrationCollectionId == null) {
+            return;
+          }
+          break;
       }
     }
 
@@ -750,12 +821,28 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
           await dataSource.completeTask(entryId: entry.id);
           break;
         case _EntryAction.migrate:
-          await ref
-              .read(taskCollectionMigrationDataSourceProvider)
-              .migrateTask(
+          if (migrationMethodDate != null) {
+            final JournalAccessState access = ref
+                .read(journalSessionControllerProvider)
+                .requireValue;
+            if (access case JournalUnlocked(:final session)) {
+              await session.migrateTaskToDaily(
                 entryId: entry.id,
-                collectionId: migrationCollectionId!,
+                methodDate: migrationMethodDate,
               );
+            } else {
+              throw StateError(
+                'Daily Task migration requires an unlocked journal session.',
+              );
+            }
+          } else {
+            await ref
+                .read(taskCollectionMigrationDataSourceProvider)
+                .migrateTask(
+                  entryId: entry.id,
+                  collectionId: migrationCollectionId!,
+                );
+          }
           break;
         case _EntryAction.schedule:
           await dataSource.scheduleTaskToFuture(
@@ -773,6 +860,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
           break;
         case _EntryAction.discard:
           await dataSource.discardTask(entryId: entry.id);
+          break;
+        case _EntryAction.signifiers:
           break;
       }
 
@@ -828,9 +917,29 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
     });
   }
 
-  void _openHistory() {
+  void _openPreviousDay() {
     final DateTime previousDate = _today.subtract(const Duration(days: 1));
     context.push('/daily/${formatJournalMethodDate(previousDate)}');
+  }
+
+  Future<void> _chooseDate() async {
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: _today,
+      firstDate: DateTime(1900),
+      lastDate: _today,
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDatePickerMode: DatePickerMode.day,
+    );
+    if (!mounted || selected == null) {
+      return;
+    }
+    final DateTime target = _dateOnly(selected);
+    if (target == _today) {
+      _restoreComposerFocus();
+      return;
+    }
+    context.push('/daily/${formatJournalMethodDate(target)}');
   }
 
   Future<void> _lock() async {
@@ -876,7 +985,14 @@ class _TodayScreenState extends ConsumerState<TodayScreen>
   }
 }
 
-enum _EntryAction { complete, migrate, schedule, reference, discard }
+enum _EntryAction {
+  complete,
+  migrate,
+  schedule,
+  reference,
+  signifiers,
+  discard,
+}
 
 DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 

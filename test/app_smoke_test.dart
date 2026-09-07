@@ -49,7 +49,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Create journal'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
     await tester.pump();
 
     expect(find.text('A master password is required.'), findsOneWidget);

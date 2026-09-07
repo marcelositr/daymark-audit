@@ -205,3 +205,26 @@ Editing/correction behavior must not silently change semantic identity. Movement
 An Entry is not moved between owners in place to simulate movement. Historical source placement remains part of the journal record and the destination receives its own identity.
 
 Database schema may change only for concrete maintenance/compatibility/security reasons. Such changes must preserve these frozen semantics through explicit migrations and compatibility tests.
+
+## Experimental Bullet Journal fidelity extensions
+
+On the isolated `feat/daily-task-migration` branch, the maintainer has explicitly approved evaluation of additional method-native semantics beyond the frozen baseline:
+
+- Monthly Calendar may own dated Task entries as well as Events;
+- an arrived Future Event may migrate deliberately into the matching Monthly Calendar after the user chooses a day;
+- built-in Signifiers (`priority`, `inspiration`, `explore`) are user-visible optional Entry context;
+- Signifiers follow a migrated Entry to its fresh destination while remaining attached to the historical source;
+- an Event with outgoing migration lineage is considered resolved for Future arrival review even though Events do not acquire Task state.
+
+These rules remain experimental until this PR is explicitly promoted into the main Daymark product.
+
+### Immediate correction window
+
+Immediate Undo is a correction affordance, not historical editing. A newly
+created Collection may be removed only while it is still untouched and has no
+entries, references, or Index membership. Once it participates in journal
+structure, deletion through that short-lived Undo is rejected.
+
+Signifiers remain optional metadata on an Entry. Search may use that metadata
+as a read-only filter, including combinations of multiple Signifiers, without
+changing ownership, state, migration, or the canonical Bullet grammar.

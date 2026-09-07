@@ -115,7 +115,10 @@ final class _MutableSearchJournal implements SearchJournalDataSource {
   bool completed = false;
 
   @override
-  Future<List<JournalSearchResult>> search(String query) async {
+  Future<List<JournalSearchResult>> search(
+    String query, {
+    Set<JournalSignifier> signifiers = const <JournalSignifier>{},
+  }) async {
     calls++;
     return <JournalSearchResult>[
       JournalSearchResult(
@@ -143,7 +146,10 @@ final class _RaceSearchJournal implements SearchJournalDataSource {
   bool get hasDeferredSearch => _deferred != null;
 
   @override
-  Future<List<JournalSearchResult>> search(String query) {
+  Future<List<JournalSearchResult>> search(
+    String query, {
+    Set<JournalSignifier> signifiers = const <JournalSignifier>{},
+  }) {
     calls++;
     if (deferNext) {
       deferNext = false;

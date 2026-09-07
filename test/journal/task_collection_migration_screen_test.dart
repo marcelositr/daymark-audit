@@ -42,6 +42,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Migrate'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Collections'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Project'));
     await tester.pumpAndSettle();
 
@@ -81,6 +83,8 @@ void main() {
     await tester.tap(find.text('•'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Migrate'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Collections'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Project'));
     await tester.pumpAndSettle();

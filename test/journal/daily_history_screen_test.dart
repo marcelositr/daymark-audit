@@ -50,6 +50,7 @@ void main() {
     expect(dataSource.calls, <String>['2026-09-02']);
     expect(find.text('Past task'), findsOneWidget);
     expect(find.text('Historical Daily Logs are read-only.'), findsOneWidget);
+    expect(find.byTooltip('Today'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(find.byType(PopupMenuButton<dynamic>), findsNothing);
 
@@ -66,7 +67,7 @@ void main() {
     next = tester.widget<IconButton>(
       find.widgetWithIcon(IconButton, Icons.chevron_right),
     );
-    expect(next.onPressed, isNull);
+    expect(next.onPressed, isNotNull);
   });
 
   testWidgets('an empty historical day stays quiet and non-interactive', (

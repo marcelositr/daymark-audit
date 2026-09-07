@@ -74,6 +74,66 @@ final class JournalRepository {
     });
   }
 
+  Future<void> undoCollectionCreation({required String collectionId}) {
+    return _database.transaction(() async {
+      final collection = await _database
+          .customSelect(
+            '''
+            SELECT created_at, updated_at
+            FROM collections
+            WHERE id = ?
+            ''',
+            variables: <Variable<Object>>[Variable.withString(collectionId)],
+          )
+          .getSingleOrNull();
+      if (collection == null) {
+        throw JournalNotFoundException('Collection', collectionId);
+      }
+
+      if (collection.read<int>('created_at') !=
+          collection.read<int>('updated_at')) {
+        throw const JournalInvariantException(
+          'Only an untouched Collection can be undone.',
+        );
+      }
+
+      final relations = await _database
+          .customSelect(
+            '''
+            SELECT
+              EXISTS(
+                SELECT 1 FROM entry_placements WHERE collection_id = ?
+              ) AS has_entries,
+              EXISTS(
+                SELECT 1 FROM collection_references WHERE collection_id = ?
+              ) AS has_references,
+              EXISTS(
+                SELECT 1 FROM index_items WHERE collection_id = ?
+              ) AS is_indexed
+            ''',
+            variables: <Variable<Object>>[
+              Variable.withString(collectionId),
+              Variable.withString(collectionId),
+              Variable.withString(collectionId),
+            ],
+          )
+          .getSingle();
+
+      if (relations.read<int>('has_entries') != 0 ||
+          relations.read<int>('has_references') != 0 ||
+          relations.read<int>('is_indexed') != 0) {
+        throw const JournalInvariantException(
+          'A Collection with journal relationships cannot be undone.',
+        );
+      }
+
+      await _database.customStatement(
+        'DELETE FROM collections WHERE id = ?',
+        <Object>[collectionId],
+      );
+    });
+  }
+
   Future<String> createEntry({
     required JournalEntryType type,
     required String content,
@@ -323,6 +383,84 @@ final class JournalRepository {
     });
   }
 
+  Future<Set<JournalSignifier>> listEntrySignifiers({
+    required String entryId,
+  }) async {
+    await _requireEntry(entryId);
+    final rows = await _database
+        .customSelect(
+          '''
+          SELECT s.builtin_code
+          FROM entry_signifiers es
+          JOIN signifiers s ON s.id = es.signifier_id
+          WHERE es.entry_id = ? AND s.kind = 'builtin'
+          ORDER BY s.builtin_code
+          ''',
+          variables: <Variable<Object>>[Variable.withString(entryId)],
+        )
+        .get();
+    return <JournalSignifier>{
+      for (final row in rows)
+        journalSignifierFromCode(row.read<String>('builtin_code')),
+    };
+  }
+
+  Future<void> replaceEntrySignifiers({
+    required String entryId,
+    required Set<JournalSignifier> signifiers,
+  }) {
+    return _database.transaction(() async {
+      await _requireEntry(entryId);
+      final Map<JournalSignifier, String> ids = <JournalSignifier, String>{};
+      for (final JournalSignifier signifier in signifiers) {
+        final existing = await _database
+            .customSelect(
+              '''
+              SELECT id
+              FROM signifiers
+              WHERE kind = 'builtin' AND builtin_code = ?
+              ''',
+              variables: <Variable<Object>>[
+                Variable.withString(signifier.code),
+              ],
+            )
+            .getSingleOrNull();
+        if (existing != null) {
+          ids[signifier] = existing.read<String>('id');
+          continue;
+        }
+        final String id = _newId();
+        await _database.customStatement(
+          '''
+          INSERT INTO signifiers (
+            id, kind, builtin_code, custom_label, custom_symbol, created_at
+          ) VALUES (?, 'builtin', ?, NULL, NULL, ?)
+          ''',
+          <Object>[id, signifier.code, _now()],
+        );
+        ids[signifier] = id;
+      }
+
+      await _database.customStatement(
+        'DELETE FROM entry_signifiers WHERE entry_id = ?',
+        <Object>[entryId],
+      );
+      for (final JournalSignifier signifier in JournalSignifier.values) {
+        final String? signifierId = ids[signifier];
+        if (signifierId == null) {
+          continue;
+        }
+        await _database.customStatement(
+          '''
+          INSERT INTO entry_signifiers (entry_id, signifier_id)
+          VALUES (?, ?)
+          ''',
+          <Object>[entryId, signifierId],
+        );
+      }
+    });
+  }
+
   Future<String> migrateEntry({
     required String sourceEntryId,
     required JournalEntryOwner destinationOwner,
@@ -395,6 +533,15 @@ final class JournalRepository {
         entryId: destinationEntryId,
         owner: resolvedDestination,
         ordinal: destinationOrdinal,
+      );
+      await _database.customStatement(
+        '''
+        INSERT INTO entry_signifiers (entry_id, signifier_id)
+        SELECT ?, signifier_id
+        FROM entry_signifiers
+        WHERE entry_id = ?
+        ''',
+        <Object>[destinationEntryId, sourceEntryId],
       );
 
       if (source.type == JournalEntryType.task) {

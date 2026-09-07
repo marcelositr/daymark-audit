@@ -22,6 +22,10 @@ final class JournalService {
     return _repository.createCollection(title: title);
   }
 
+  Future<void> undoCollectionCreation({required String collectionId}) {
+    return _repository.undoCollectionCreation(collectionId: collectionId);
+  }
+
   Future<String> capture({
     required JournalEntryType type,
     required String content,
@@ -51,6 +55,20 @@ final class JournalService {
     return _repository.removeCollectionReference(
       collectionId: collectionId,
       entryId: entryId,
+    );
+  }
+
+  Future<Set<JournalSignifier>> listEntrySignifiers({required String entryId}) {
+    return _repository.listEntrySignifiers(entryId: entryId);
+  }
+
+  Future<void> replaceEntrySignifiers({
+    required String entryId,
+    required Set<JournalSignifier> signifiers,
+  }) {
+    return _repository.replaceEntrySignifiers(
+      entryId: entryId,
+      signifiers: signifiers,
     );
   }
 
