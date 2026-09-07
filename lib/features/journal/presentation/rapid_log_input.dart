@@ -17,19 +17,23 @@ RapidLogInput parseRapidLogInput(
   }
 
   final ({String marker, JournalEntryType type})? signifier = switch (input) {
-    String value when value == '•' || value.startsWith('• ') => (
+    '•' => (marker: '•', type: JournalEntryType.task),
+    _ when input.startsWith('• ') => (
       marker: '•',
       type: JournalEntryType.task,
     ),
-    String value when value == '○' || value.startsWith('○ ') => (
+    '○' => (marker: '○', type: JournalEntryType.event),
+    _ when input.startsWith('○ ') => (
       marker: '○',
       type: JournalEntryType.event,
     ),
-    String value when value == '–' || value.startsWith('– ') => (
+    '–' => (marker: '–', type: JournalEntryType.note),
+    _ when input.startsWith('– ') => (
       marker: '–',
       type: JournalEntryType.note,
     ),
-    String value when value == '-' || value.startsWith('- ') => (
+    '-' => (marker: '-', type: JournalEntryType.note),
+    _ when input.startsWith('- ') => (
       marker: '-',
       type: JournalEntryType.note,
     ),
