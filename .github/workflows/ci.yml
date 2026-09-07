@@ -39,6 +39,33 @@ jobs:
       - name: Apply month-cycle experiment
         run: python3 tool/apply_bujo_month_cycle_experiment.py
 
+      - name: Apply integration details
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          session = Path('lib/core/session/journal_session.dart')
+          text = session.read_text()
+          if "import 'package:drift/drift.dart';" not in text:
+              text = text.replace(
+                  "import 'package:uuid/uuid.dart';",
+                  "import 'package:drift/drift.dart';\nimport 'package:uuid/uuid.dart';",
+                  1,
+              )
+          session.write_text(text)
+
+          history = Path('lib/features/journal/presentation/future_history_screen.dart')
+          text = history.read_text()
+          if not text.startswith("import 'dart:async';"):
+              text = "import 'dart:async';\n\n" + text
+          text = text.replace(
+              "                      _applyArrivalAction(entry, action);",
+              "                      unawaited(_applyArrivalAction(entry, action));",
+              1,
+          )
+          history.write_text(text)
+          PY
+
       - name: Format changed Dart sources
         run: |
           dart format \
