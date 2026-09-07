@@ -519,9 +519,8 @@ class _MonthlyScreenState extends ConsumerState<MonthlyScreen>
             _monthlyCalendarEntrySymbol(entry),
             textAlign: TextAlign.center,
             style: entry.taskState == JournalTaskState.discarded
-                ? Theme.of(context).textTheme.titleMedium?.copyWith(
-                    decoration: TextDecoration.lineThrough,
-                  )
+                ? Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(decoration: TextDecoration.lineThrough)
                 : Theme.of(context).textTheme.titleMedium,
           );
     final Widget row = Row(

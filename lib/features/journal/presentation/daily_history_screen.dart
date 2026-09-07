@@ -162,9 +162,8 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
                   _entrySymbol(entry),
                   textAlign: TextAlign.center,
                   style: discarded
-                      ? Theme.of(context).textTheme.titleMedium?.copyWith(
-                          decoration: TextDecoration.lineThrough,
-                        )
+                      ? Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(decoration: TextDecoration.lineThrough)
                       : Theme.of(context).textTheme.titleMedium,
                 ),
               ),
@@ -213,9 +212,7 @@ class _DailyHistoryScreenState extends ConsumerState<DailyHistoryScreen> {
     if (!_canGoNext) {
       return;
     }
-    final DateTime target = _dateOnly(
-      _viewedDate.add(const Duration(days: 1)),
-    );
+    final DateTime target = _dateOnly(_viewedDate.add(const Duration(days: 1)));
     if (target == _today) {
       _backToToday();
       return;
