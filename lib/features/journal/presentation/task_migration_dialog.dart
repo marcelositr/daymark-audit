@@ -12,18 +12,20 @@ abstract interface class DailyTaskMigrationDataSource {
   });
 }
 
-final Provider<DailyTaskMigrationDataSource> dailyTaskMigrationDataSourceProvider =
-    Provider<DailyTaskMigrationDataSource>((ref) {
-      final JournalAccessState access = ref
-          .watch(journalSessionControllerProvider)
-          .requireValue;
-      if (access case JournalUnlocked(:final session)) {
-        return _SessionDailyTaskMigrationDataSource(session);
-      }
-      throw StateError(
-        'Daily Task migration requires an unlocked journal session.',
-      );
-    });
+final Provider<DailyTaskMigrationDataSource>
+dailyTaskMigrationDataSourceProvider = Provider<DailyTaskMigrationDataSource>((
+  ref,
+) {
+  final JournalAccessState access = ref
+      .watch(journalSessionControllerProvider)
+      .requireValue;
+  if (access case JournalUnlocked(:final session)) {
+    return _SessionDailyTaskMigrationDataSource(session);
+  }
+  throw StateError(
+    'Daily Task migration requires an unlocked journal session.',
+  );
+});
 
 final class _SessionDailyTaskMigrationDataSource
     implements DailyTaskMigrationDataSource {
@@ -73,9 +75,8 @@ Future<TaskMigrationDestination?> showTaskMigrationDestinationDialog({
         SimpleDialogOption(
           key: const ValueKey<String>('migrate-collection'),
           onPressed: () {
-            Navigator.of(
-              dialogContext,
-            ).pop(TaskMigrationDestination.collection);
+            Navigator.of(dialogContext)
+                .pop(TaskMigrationDestination.collection);
           },
           child: Text(l10n.collections),
         ),

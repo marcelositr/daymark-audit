@@ -32,93 +32,77 @@ void main() {
     }
   });
 
-  test(
-    'Daily Task migration preserves source, destination, lineage and unlock persistence',
-    () async {
-      final JournalSession created = await manager.create(
-        masterPassword: 'daily migration journal',
-      );
+  test('Daily Task migration preserves source, destination, lineage and unlock persistence', () async {
+    final JournalSession created = await manager.create(
+      masterPassword: 'daily migration journal',
+    );
 
-      final DailyLogSnapshot sourceLog = await created.loadDailyLog(
-        '2026-09-07',
-      );
-      await created.captureDailyLogEntry(
-        logId: sourceLog.logId,
-        type: JournalEntryType.task,
-        content: 'Carry this forward',
-      );
+    final DailyLogSnapshot sourceLog = await created.loadDailyLog('2026-09-07');
+    await created.captureDailyLogEntry(
+      logId: sourceLog.logId,
+      type: JournalEntryType.task,
+      content: 'Carry this forward',
+    );
 
-      final String sourceEntryId = (await created.loadDailyLog('2026-09-07'))
-          .entries
-          .single
-          .id;
+    final String sourceEntryId = (await created.loadDailyLog('2026-09-07'))
+        .entries
+        .single
+        .id;
 
-      await created.migrateTaskToDaily(
-        entryId: sourceEntryId,
-        methodDate: '2026-09-08',
-      );
+    await created.migrateTaskToDaily(
+      entryId: sourceEntryId,
+      methodDate: '2026-09-08',
+    );
 
-      final DailyLogSnapshot migratedSource = await created.loadDailyLog(
-        '2026-09-07',
-      );
-      final DailyLogSnapshot destination = await created.loadDailyLog(
-        '2026-09-08',
-      );
+    final DailyLogSnapshot migratedSource = await created.loadDailyLog(
+      '2026-09-07',
+    );
+    final DailyLogSnapshot destination = await created.loadDailyLog(
+      '2026-09-08',
+    );
 
-      expect(migratedSource.entries, hasLength(1));
-      expect(migratedSource.entries.single.id, sourceEntryId);
-      expect(migratedSource.entries.single.content, 'Carry this forward');
-      expect(
-        migratedSource.entries.single.taskState,
-        JournalTaskState.migrated,
-      );
+    expect(migratedSource.entries, hasLength(1));
+    expect(migratedSource.entries.single.id, sourceEntryId);
+    expect(migratedSource.entries.single.content, 'Carry this forward');
+    expect(migratedSource.entries.single.taskState, JournalTaskState.migrated);
 
-      expect(destination.entries, hasLength(1));
-      expect(destination.entries.single.id, isNot(sourceEntryId));
-      expect(destination.entries.single.content, 'Carry this forward');
-      expect(destination.entries.single.taskState, JournalTaskState.open);
+    expect(destination.entries, hasLength(1));
+    expect(destination.entries.single.id, isNot(sourceEntryId));
+    expect(destination.entries.single.content, 'Carry this forward');
+    expect(destination.entries.single.taskState, JournalTaskState.open);
 
-      final migration = await created.database
-          .customSelect(
-            '''
+    final migration = await created.database
+        .customSelect(
+          '''
             SELECT destination_entry_id, kind
             FROM migrations
             WHERE source_entry_id = ?
             ''',
-            variables: <Variable<Object>>[
-              Variable.withString(sourceEntryId),
-            ],
-          )
-          .getSingle();
-      expect(migration.read<String>('kind'), 'migrated');
-      expect(
-        migration.read<String>('destination_entry_id'),
-        destination.entries.single.id,
-      );
+          variables: <Variable<Object>>[Variable.withString(sourceEntryId)],
+        )
+        .getSingle();
+    expect(migration.read<String>('kind'), 'migrated');
+    expect(
+      migration.read<String>('destination_entry_id'),
+      destination.entries.single.id,
+    );
 
-      await manager.lock();
-      final JournalSession reopened = await manager.unlock(
-        masterPassword: 'daily migration journal',
-      );
+    await manager.lock();
+    final JournalSession reopened = await manager.unlock(
+      masterPassword: 'daily migration journal',
+    );
 
-      final DailyLogSnapshot reopenedSource = await reopened.loadDailyLog(
-        '2026-09-07',
-      );
-      final DailyLogSnapshot reopenedDestination = await reopened.loadDailyLog(
-        '2026-09-08',
-      );
+    final DailyLogSnapshot reopenedSource = await reopened.loadDailyLog(
+      '2026-09-07',
+    );
+    final DailyLogSnapshot reopenedDestination = await reopened.loadDailyLog(
+      '2026-09-08',
+    );
 
-      expect(
-        reopenedSource.entries.single.taskState,
-        JournalTaskState.migrated,
-      );
-      expect(reopenedDestination.entries.single.content, 'Carry this forward');
-      expect(
-        reopenedDestination.entries.single.taskState,
-        JournalTaskState.open,
-      );
-    },
-  );
+    expect(reopenedSource.entries.single.taskState, JournalTaskState.migrated);
+    expect(reopenedDestination.entries.single.content, 'Carry this forward');
+    expect(reopenedDestination.entries.single.taskState, JournalTaskState.open);
+  });
 
   test('Monthly Task can migrate into a Daily Log with lineage', () async {
     final JournalSession session = await manager.create(
@@ -150,10 +134,7 @@ void main() {
     );
 
     expect(sourceAfter.taskEntries.single.id, sourceEntryId);
-    expect(
-      sourceAfter.taskEntries.single.taskState,
-      JournalTaskState.migrated,
-    );
+    expect(sourceAfter.taskEntries.single.taskState, JournalTaskState.migrated);
     expect(destination.entries, hasLength(1));
     expect(destination.entries.single.id, isNot(sourceEntryId));
     expect(destination.entries.single.content, 'Carry monthly task forward');
@@ -166,9 +147,7 @@ void main() {
           FROM migrations
           WHERE source_entry_id = ?
           ''',
-          variables: <Variable<Object>>[
-            Variable.withString(sourceEntryId),
-          ],
+          variables: <Variable<Object>>[Variable.withString(sourceEntryId)],
         )
         .getSingle();
     expect(migration.read<String>('kind'), 'migrated');
@@ -219,15 +198,11 @@ void main() {
       throwsA(isA<JournalInvariantException>()),
     );
 
-    final destinationCount = await session.database
-        .customSelect(
-          '''
+    final destinationCount = await session.database.customSelect('''
           SELECT COUNT(*) AS count
           FROM logs
           WHERE kind = 'daily' AND period_start = '2026-09-08'
-          ''',
-        )
-        .getSingle();
+          ''').getSingle();
     expect(destinationCount.read<int>('count'), 0);
   });
 }
